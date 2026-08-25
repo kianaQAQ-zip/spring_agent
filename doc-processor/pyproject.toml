@@ -1,0 +1,38 @@
+[project]
+name = "doc-processor"
+version = "0.1.0"
+description = "电商客服 Agent 文档处理子项目（OCR/清洗/重排/多模态），与 Java 主项目解耦"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# 重模型依赖：本机进程运行时可装；沙箱/CI 契约测试不装（模型全部懒加载）。
+# 注：magic-pdf[full] 自带 paddleocr/paddlepaddle，勿重复声明（版本会冲突）。
+ml = [
+    "magic-pdf[full]>=1.1.0",
+    "FlagEmbedding>=1.2",
+    "dashscope>=1.20",
+    "Pillow>=10.0",
+]
+# PDF 兜底解析（轻量，无 GPU 亦可）
+pdf = ["PyMuPDF>=1.24"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+# magic-pdf 依赖 doclayout-yolo 预发布版本，需放开
+prerelease = "allow"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

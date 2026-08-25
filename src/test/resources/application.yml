@@ -1,0 +1,23 @@
+# 测试专用配置：沙箱无真实 PostgreSQL，改用 H2 内存库使 Spring 上下文可加载。
+# 注意：仅用于 M1 上下文加载验证；PgVectorStore 不初始化 schema、不触发查询，故 H2 兼容。
+spring:
+  datasource:
+    url: jdbc:h2:mem:ecom_agent;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: never
+  ai:
+    vectorstore:
+      pgvector:
+        enabled: false
+  autoconfigure:
+    exclude: org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+# 测试期无真实 API Key，显式提供空值，避免 @Value 占位符解析失败
+dashscope:
+  api-key: ""
+deepseek:
+  api-key: ""

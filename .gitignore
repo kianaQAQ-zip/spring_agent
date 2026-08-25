@@ -1,16 +1,8 @@
-# Compiled class file
+# === Java / Maven（GitHub Java 模板） ===
 *.class
-
-# Log file
 *.log
-
-# BlueJ files
 *.ctxt
-
-# Mobile Tools for Java (J2ME)
 .mtj.tmp/
-
-# Package Files #
 *.jar
 *.war
 *.nar
@@ -18,7 +10,33 @@
 *.zip
 *.tar.gz
 *.rar
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# === IDE ===
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+
+# === Java / Maven 构建产物 ===
+target/
+.mvn/wrapper/maven-wrapper.jar
+# 工具链：忽略下载的 Maven 二进制与依赖缓存，保留 mvn.sh 启动脚本
+.tooling/maven/
+.tooling/repo/
+
+# === Python / uv ===
+__pycache__/
+*.pyc
+.pytest_cache/
+doc-processor/.venv/
+
+# === Agent 内部工作记忆（非项目代码） ===
+.workbuddy/
+
+# === 日志与临时文件 ===
+*.tmp
+.DS_Store

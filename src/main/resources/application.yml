@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: spring-agent
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ecom_agent
+    username: postgres
+    password: ${PGPASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  # 不自动跑 schema：pgvector 扩展需先安装，建表脚本由运维/DDL 手动执行（见 db/init.sql）
+  sql:
+    init:
+      mode: never
+  ai:
+    vectorstore:
+      pgvector:
+        enabled: false   # 关闭 starter 自动装配开关
+  # 显式排除 PgVectorStore 自动配置，避免与 config/VectorStoreConfig 中的 vectorStore Bean 撞名冲突
+  autoconfigure:
+    exclude: org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+# 阿里云百炼（DashScope）OpenAI 兼容接口；API Key 必须走环境变量，禁止落库（§5 合规）
+dashscope:
+  api-key: ${DASHSCOPE_API_KEY:}
+# DeepSeek 降级 LLM（独立 base-url，同样走 OpenAI 兼容协议）
+deepseek:
+  api-key: ${DEEPSEEK_API_KEY:}
+
+# Python 文档处理子项目（M1.5，当前未启动时为降级路径）
+doc-processor:
+  url: http://localhost:8000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
