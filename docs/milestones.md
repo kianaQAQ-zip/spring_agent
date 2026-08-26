@@ -124,6 +124,10 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M1, M2
 **风险/面试点**：SSE 断连/重连；多轮后 memory 窗口正确性。
 
+> ✅ **M3 已构建（2026-08-26）**：`common/TenantContext`（租户接缝）+ `ChatClientConfig.chatMemory()`（MessageWindowChatMemory 8 轮窗口）+ `ChatService`（Advisor 链 Memory→RAG + 流式）+ `ChatController.GET /chat/stream`（SSE）。4 单测：`ChatServiceTest`(2, @SpringBootTest 验证流式输出/记忆落库/错误补 truncated)、`ChatControllerTest`(2, @WebMvcTest 验证 /chat/health + /chat/stream 异步 SSE)。详见 `docs/M3_VERIFICATION.md`。
+> **⚠️ API 调整**：M3 原稿写的 `QuestionAnswerAdvisor` 在 **Spring AI 1.0.0 GA 已移除**，已改用 `RetrievalAugmentationAdvisor`（`VectorStoreDocumentRetriever` + `ContextualQueryAugmenter`，filterExpression=`tenant_id=='default'`）。后续 M5 重排 / M6 QueryRewrite 可直接插 `documentPostProcessors` / `queryTransformers`，无需重构。
+> 注：沙箱禁 TLS（Maven 连 Maven Central）且本机无 PG/Key，`mvn test` 需你本机执行；沙箱内用 H2 + 空 key 完成静态审查与代码交付。
+
 ---
 
 ## M4 — 工具层 + 确认护栏（HITL，高光里程碑）

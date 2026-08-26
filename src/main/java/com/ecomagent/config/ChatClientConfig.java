@@ -1,6 +1,9 @@
 package com.ecomagent.config;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.memory.repository.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -23,5 +26,17 @@ public class ChatClientConfig {
     @Bean
     public ChatClient chatClient(@Qualifier("qwenChatModel") ChatModel chatModel) {
         return ChatClient.builder(chatModel).build();
+    }
+
+    /**
+     * L1 短期记忆（M3）：内存实现，窗口最近 8 轮（16 条消息）。
+     * 预留 Redis/JdbcChatMemoryRepository 替换点（M9 多实例共享会话）。
+     */
+    @Bean
+    public ChatMemory chatMemory() {
+        return MessageWindowChatMemory.builder()
+                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+                .maxMessages(16)   // 8 轮 × (user + assistant)
+                .build();
     }
 }
