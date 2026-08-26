@@ -2,7 +2,10 @@ package com.ecomagent.rag;
 
 import com.ecomagent.rag.dto.ParseResult;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,6 +30,7 @@ public class KbIngestionService {
     private final StructureAwareChunker chunker;
     private final VectorStore vectorStore;
     private final KnowledgeDocRepository knowledgeDocRepository;
+    private final Bm25Index bm25Index;
 
     private static final String DEFAULT_TENANT = "default";
     private static final double CLEAN_SCORE_THRESHOLD = 0.5;
@@ -35,12 +39,14 @@ public class KbIngestionService {
                               TikaDocumentLoader tikaDocumentLoader,
                               StructureAwareChunker chunker,
                               VectorStore vectorStore,
-                              KnowledgeDocRepository knowledgeDocRepository) {
+                              KnowledgeDocRepository knowledgeDocRepository,
+                              Bm25Index bm25Index) {
         this.docProcessorClient = docProcessorClient;
         this.tikaDocumentLoader = tikaDocumentLoader;
         this.chunker = chunker;
         this.vectorStore = vectorStore;
         this.knowledgeDocRepository = knowledgeDocRepository;
+        this.bm25Index = bm25Index;
     }
 
     public IngestionResult ingest(MultipartFile file) {
@@ -78,6 +84,10 @@ public class KbIngestionService {
         }
         if (!documents.isEmpty()) {
             vectorStore.add(documents);
+            // M5：同步写入过程内 BM25 索引，供混合召回关键词命中
+            for (Document d : documents) {
+                bm25Index.index(d);
+            }
         }
 
         knowledgeDocRepository.save(new KnowledgeDoc(
@@ -90,5 +100,24 @@ public class KbIngestionService {
 
     public KnowledgeDoc getDoc(String docId) {
         return knowledgeDocRepository.findByDocId(docId);
+    }
+
+    /** M5 溯源：取回文档全文 + 定位指定 chunk（经向量库 metadata 过滤）。 */
+    public DocChunk getChunk(String docId, int chunkIndex) {
+        KnowledgeDoc doc = getDoc(docId);
+        if (doc == null) {
+            return null;
+        }
+        FilterExpressionBuilder b = new FilterExpressionBuilder();
+        Filter.Expression filter = b.and(
+                b.eq("doc_id", docId),
+                b.eq("chunk_index", chunkIndex)).build();
+        List<Document> docs = vectorStore.similaritySearch(SearchRequest.builder()
+                .query(docId)
+                .topK(1)
+                .filterExpression(filter)
+                .build());
+        String chunkContent = docs.isEmpty() ? null : docs.get(0).getText();
+        return new DocChunk(docId, doc.source(), doc.parsedText(), chunkIndex, chunkContent);
     }
 }

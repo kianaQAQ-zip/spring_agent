@@ -1,5 +1,6 @@
 package com.ecomagent.api;
 
+import com.ecomagent.rag.DocChunk;
 import com.ecomagent.rag.IngestionResult;
 import com.ecomagent.rag.KbIngestionService;
 import com.ecomagent.rag.KnowledgeDoc;
@@ -63,5 +64,17 @@ class KbControllerTest {
         mockMvc.perform(get("/kb/doc/missing"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(404));
+    }
+
+    @Test
+    void getDocChunkReturnsHighlight() throws Exception {
+        DocChunk chunk = new DocChunk("doc-1", "policy.txt", "全文", 1, "七天无理由");
+        when(ingestionService.getChunk(eq("doc-1"), eq(1))).thenReturn(chunk);
+
+        mockMvc.perform(get("/kb/doc/doc-1").param("chunk", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.chunkContent").value("七天无理由"))
+                .andExpect(jsonPath("$.data.chunkIndex").value(1));
     }
 }

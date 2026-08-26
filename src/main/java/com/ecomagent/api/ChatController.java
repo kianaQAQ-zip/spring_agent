@@ -37,8 +37,7 @@ public class ChatController {
     }
 
     /**
-     * 流式对话（SSE，M3）。逐 token 以 {@code event: token} 推送，前端 EventSource 直接消费。
-     *
++     *
      * @param message        用户消息
      * @param conversationId 会话 ID（记忆窗口键，默认 "default"）
      */

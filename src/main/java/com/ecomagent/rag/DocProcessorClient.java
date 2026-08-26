@@ -16,7 +16,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -74,8 +77,49 @@ public class DocProcessorClient {
         }
     }
 
+    /**
+     * Cross-encoder 重排（§9.5 Stage2，经 doc-processor 的 bge-reranker-v2-m3）。
+     * 不可达时返回空列表（上层降级为 score 阈值 + MMR）。
+     */
+    public List<RerankHit> rerank(String query, List<String> docIds, List<String> texts, int topN) {
+        try {
+            List<Map<String, String>> documents = new ArrayList<>(docIds.size());
+            for (int i = 0; i < docIds.size(); i++) {
+                documents.add(Map.of("id", docIds.get(i), "text", texts.get(i)));
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("query", query);
+            body.put("documents", documents);
+            body.put("top_n", topN);
+
+            RerankResponse resp = restClient.post()
+                    .uri("/api/v1/rerank")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(RerankResponse.class);
+
+            if (resp == null || !resp.ok() || resp.data() == null) {
+                return List.of();
+            }
+            return resp.data().ranked();
+        } catch (RestClientException e) {
+            return List.of();
+        }
+    }
+
     // ---- doc-processor /api/v1/parse 响应契约（§10.2） ----
     public record DocProcessorParseResponse(boolean ok, ParseData data, String error) {
+    }
+
+    // ---- doc-processor /api/v1/rerank 响应契约（§10.2） ----
+    public record RerankHit(String id, double score) {
+    }
+
+    public record RerankData(List<RerankHit> ranked) {
+    }
+
+    public record RerankResponse(boolean ok, RerankData data, String error) {
     }
 
     public record ParseData(

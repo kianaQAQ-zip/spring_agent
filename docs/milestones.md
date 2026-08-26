@@ -181,6 +181,9 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M3, M1.5
 **面试点**：与 §1.1 事实一致性构成"不可胡编 + 可查"两道防线；Cross-encoder reranker 是检索准确率的关鍵杠杆（§9.5），经解耦的 doc-processor 子项目提供服务（§10）。
 
+> ✅ **M5 已构建（2026-08-26）**：`rag/RagDocUtils` + `Bm25Index`（过程内 BM25）+ `HybridRetriever`（向量 topK=20 + BM25 + RRF 融合）+ `RerankService`（Cross-encoder 经 doc-processor / 不可达 MMR 降级）+ `MmrSelector`（去冗余+table/atomic 提权+token 预算）+ `RetrievalPipeline`（编排+编号）+ `CitationValidator`（`[n]` 越界校验）；`DocProcessorClient.rerank()`；`ChatService` 改手动检索（先发 `citations` 再发 `token`，system prompt 带编号）；`GET /kb/doc/{docId}?chunk=` 溯源高亮；`KbIngestionService` 入库同步写 BM25。测试：`Bm25IndexTest`(2)/`MmrSelectorTest`(2)/`CitationValidatorTest`(4)/`HybridRetrieverTest`(1)/`RerankServiceTest`(2)/`RetrievalPipelineTest`(1) + 更新 `ChatServiceTest`/`KbControllerTest`，共 18 例。详见 `docs/M5_VERIFICATION.md`。
+> 注：沙箱禁 TLS，`mvn test` 需你本机执行；沙箱内完成静态审查与代码交付。
+
 ---
 
 ## M6 — 三层上下文状态机（核心深度，含 QueryRewrite）
