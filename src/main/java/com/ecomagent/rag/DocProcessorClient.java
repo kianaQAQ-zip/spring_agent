@@ -32,7 +32,7 @@ public class DocProcessorClient {
     private final RestClient restClient;
 
     public DocProcessorClient(RestClient.Builder builder,
-                              @Value("${doc-processor.url}") String baseUrl) {
+                              @Value("${doc-processor.url:http://localhost:8000}") String baseUrl) {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(Duration.ofSeconds(5));
         rf.setReadTimeout(Duration.ofSeconds(30));

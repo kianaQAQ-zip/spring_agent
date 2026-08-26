@@ -21,3 +21,7 @@ dashscope:
   api-key: ""
 deepseek:
   api-key: ""
+
+# doc-processor 不可达时走 Tika 兜底（§10.5），此处仅需让占位符可解析
+doc-processor:
+  url: http://localhost:8000
