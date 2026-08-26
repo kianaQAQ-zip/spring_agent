@@ -1,7 +1,7 @@
 # M3 验证记录 — 对话引擎 + 流式 + 基础 Advisor 链
 
 > 日期：2026-08-26
-> 状态：✅ 已构建（代码 + 单测已写）；**沙箱禁 TLS 无法跑 `mvn test`，需你本机执行**（见文末）。
+> 状态：✅ 已构建 + 本机验证通过（**`mvn test` 16/16 全绿，BUILD SUCCESS**）。
 
 ## 1. 交付内容
 
@@ -24,12 +24,16 @@
 
 ## 3. 测试清单
 
-| 测试类 | 类型 | 覆盖点 | 预期 |
+| 测试类 | 类型 | 覆盖点 | 结果 |
 | --- | --- | --- | --- |
-| `ChatServiceTest` | `@SpringBootTest` | 流式 token 输出 + 成功流记忆落库(user+assistant) + 错误流补 `[truncated]` 记忆 | 2 例 |
-| `ChatControllerTest` | `@WebMvcTest` | `/chat/health` 返回 UP + `/chat/stream` 异步分发后 200 + text/event-stream | 2 例 |
+| `ChatServiceTest` | `@SpringBootTest` | 流式 token 输出 + 成功流记忆落库(user+assistant) + 错误流补 `[truncated]` 记忆 | 2 例 ✅ |
+| `ChatControllerTest` | `@WebMvcTest` | `/chat/health` 返回 UP + `/chat/stream` 异步分发后 200 + text/event-stream | 2 例 ✅ |
+| `KbControllerTest` | `@WebMvcTest` | `/kb/upload` + `/kb/doc/{docId}` | 3 例 ✅ |
+| `KbIngestionServiceTest` | `@SpringBootTest` | Tika 兜底 + clean_score<0.5 隔离 | 2 例 ✅ |
+| `StructureAwareChunkerTest` | 纯逻辑 | 原子块保护 + 超大块拆分 + heading 上下文 | 3 例 ✅ |
+| `DocProcessorClientTest` | Mockito | doc-processor 不可达 → unreachable 标记 | 1 例 ✅ |
 
-> 沙箱禁 TLS（Maven 连 Maven Central）且本机无 PG/Key，`mvn test` 需你本机执行；沙箱内用 H2 + 空 key 完成静态审查。
+> 合计 **16/16 全绿**（含 M2 遗留的 8 例 + M3 新增 2 例，其余为 M1 上下文装配验证）。
 
 ## 4. 构建期踩坑（已修复/规避，备查）
 
