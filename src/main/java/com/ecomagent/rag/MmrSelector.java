@@ -32,11 +32,15 @@ public class MmrSelector {
         List<ScoredDoc> result = new ArrayList<>();
         List<ScoredDoc> remaining = new ArrayList<>(boosted);
         int budget = 0;
-        while (!remaining.isEmpty() && budget < maxTokens) {
+        while (!remaining.isEmpty()) {
             ScoredDoc best = pickBest(remaining, result);
             remaining.remove(best);
+            int tok = tokenCount(best.doc());
+            if (!result.isEmpty() && budget + tok > maxTokens) {
+                break; // 加入会超预算，停止（至少保留一条）
+            }
             result.add(best);
-            budget += tokenCount(best.doc());
+            budget += tok;
         }
         return result;
     }
