@@ -1,5 +1,6 @@
 package com.ecomagent.api;
 
+import com.ecomagent.agent.ChatService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -1,12 +1,13 @@
 package com.ecomagent.agent;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.ChatResponse;
-import org.springframework.ai.chat.Generation;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,7 +53,7 @@ class ChatServiceTest {
         ChatResponse resp = new ChatResponse(List.of(
                 new Generation(new AssistantMessage("你好世界，七天无理由退货政策如下。"))));
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(resp));
-        when(vectorStore.similaritySearch(any())).thenReturn(List.of());
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
 
         String conv = "conv-1";
         List<ServerSentEvent<String>> events = chatService.streamAnswer(conv, "七天无理由退货怎么算")
@@ -74,7 +75,7 @@ class ChatServiceTest {
     @Test
     void streamErrorPersistsTruncatedMemory() {
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.error(new RuntimeException("boom")));
-        when(vectorStore.similaritySearch(any())).thenReturn(List.of());
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
 
         String conv = "conv-err";
         try {
