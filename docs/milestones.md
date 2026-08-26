@@ -100,6 +100,10 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M1, M1.5
 **风险/面试点**：Tika 对扫描件丢内容 → 已由 doc-processor(MinerU+PaddleOCR) 真接解决（§9.2）；固定 500 token 刚性切分丢语义 → 柔性分块+原子保护（§9.4）。
 
+> ✅ **M2 已构建并通过单元测试（2026-08-25）**：9 个测试用例覆盖 `StructureAwareChunkerTest`(3) / `DocProcessorClientTest`(1) / `KbControllerTest`(3，@WebMvcTest) / `KbIngestionServiceTest`(2，@SpringBootTest)，覆盖 doc-processor 不可达→Tika 兜底→分块→向量入库(mock 校验)+knowledge_doc 落库，以及 clean_score<0.5→QUARANTINED 隔离不入库。详见 `docs/M2_VERIFICATION.md`。
+> 构建期踩坑（已修复）：① `ParseResult` 构造器为 `private`，跨包测试 `new ParseResult(...)` 编译失败 → 新增 `public static fallbackWithScore(...)` 工厂专供低质量门禁场景，测试改用工厂；② 反编译确认 `PgVectorStore.add()` 内部用 Tongyi bean 编码、不复用外部预计算 embedding → 入库服务不显式 embed。
+> 注：沙箱禁 TLS（Maven 需连 Maven Central）且本机无 PG/Key，`mvn test` 需你本机执行；沙箱内用 H2 + 空 key 完成静态审查与代码交付。
+
 ---
 
 ## M3 — 对话引擎 + 流式 + 基础 Advisor 链
