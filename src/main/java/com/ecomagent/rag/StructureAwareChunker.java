@@ -62,6 +62,12 @@ public class StructureAwareChunker {
 
             // text / paragraph / list / footnote：累积至 ~600 token 后在边界 flush
             int tok = b.tokenCount() != null ? b.tokenCount() : TokenUtils.estimateTokens(text);
+            if (tok > MAX_TOKENS) {
+                // 单个块超大（如 Tika 兜底产出的超长纯文本）：先 flush 已累积内容，再按 MAX 拆分该块
+                idx = flush(chunks, docId, source, cur, curTokens, headingPath, lastPage, idx);
+                idx = splitOversized(chunks, docId, source, text, type, headingPath, lastPage, idx);
+                continue;
+            }
             if (curTokens + tok > MAX_TOKENS && curTokens >= MIN_TOKENS) {
                 idx = flush(chunks, docId, source, cur, curTokens, headingPath, lastPage, idx);
             }
@@ -101,6 +107,21 @@ public class StructureAwareChunker {
         while (headingPath.size() > MAX_HEADING_PATH) {
             headingPath.remove(0);
         }
+    }
+
+    /** 单个非原子块超过 MAX_TOKENS 时，按约 MAX_TOKENS 拆成多个 chunk（保持 heading_path） */
+    private int splitOversized(List<Chunk> chunks, String docId, String source, String text,
+                               String type, List<String> headingPath, int page, int idx) {
+        int maxChars = (int) (MAX_TOKENS * 1.5);
+        int start = 0;
+        while (start < text.length()) {
+            int end = Math.min(text.length(), start + maxChars);
+            String seg = text.substring(start, end);
+            chunks.add(new Chunk(docId, idx++, source, seg, type, false, page,
+                    TokenUtils.estimateTokens(seg), String.join(" / ", headingPath)));
+            start = end;
+        }
+        return idx;
     }
 
     /** 近似取文本尾部约 n 个 token 对应的子串（CJK 约 1.5 字符/token） */

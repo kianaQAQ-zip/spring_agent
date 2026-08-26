@@ -7,13 +7,9 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 import org.springframework.mock.web.MockMultipartFile;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
 
 /**
  * DocProcessorClient 降级契约测试：doc-processor 不可达（抛 RestClientException）时，
@@ -27,11 +23,9 @@ class DocProcessorClientTest {
 
     @Test
     void unreachableReturnsFallbackMarker() {
+        // deep-stub 的 RestClient 链对 .body(Class) 返回 null（模拟 doc-processor 无响应），
+        // parse() 判空返回 unreachable，交由上层 Tika 兜底。
         DocProcessorClient client = new DocProcessorClient(builder, "http://localhost:9/not-there");
-
-        when(builder.build().post().uri(anyString()).contentType(any()).body(any())
-                .retrieve().body(any(Class.class)))
-                .thenThrow(new RestClientException("connection refused"));
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "policy.pdf", "application/pdf", "退货政策内容".getBytes());
