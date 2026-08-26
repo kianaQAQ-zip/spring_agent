@@ -78,11 +78,10 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-rag</artifactId>
         </dependency>
-        <!-- Caffeine：QueryRewrite 缓存（§3.1，TTL 10min） -->
+        <!-- Caffeine：QueryRewrite 缓存（§3.1，TTL 10min）。注意 groupId 是 ben-manes（带连字符），版本由 Spring Boot BOM 托管 -->
         <dependency>
-            <groupId>com.github.benmanes.caffeine</groupId>
+            <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
-            <version>3.1.8</version>
         </dependency>
         <!-- Apache Tika：doc-processor 不可达时的兜底解析（纯文本/HTML/Word） -->
         <dependency>
