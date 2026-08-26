@@ -4,7 +4,7 @@ import com.ecomagent.agent.ChatService;
 import com.ecomagent.common.ApiResponse;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.http.MediaType;
-import org.springframework.http.ServerSentEvent;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
