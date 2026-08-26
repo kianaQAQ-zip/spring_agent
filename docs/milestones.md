@@ -207,6 +207,9 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M3, M4, M5
 **风险/面试点**：**"10 轮窗口"反模式 → 三层纠正**是面试核心加分项；SignalDetector 否定窗口防误触发是高频追问。
 
+> ✅ **M6 已构建（2026-08-26）**：`agent/SessionState` + `SessionStateRepository`(乐观锁 version) + `SessionWriteLock`(同 session 串行) + `SessionStateService`(qwen-turbo + BeanOutputConverter 增量提取) + `SignalDetector`(否定窗口/订单号/孤立情绪) + `StateMachine`(主动澄清) + `QueryRewriteService`(L1 改写 + Caffeine 缓存) + `ContextAssembler`(token 预算+分区模板)；`ChatService` 编排信号→状态→状态机→改写→检索→装配。依赖新增 Caffeine；`init.sql` session_state 改 TEXT。测试：`SignalDetectorTest`(4)/`StateMachineTest`(3)/`ContextAssemblerTest`(2)/`QueryRewriteServiceTest`(1)/`SessionStateServiceTest`(2) + 更新 `ChatServiceTest`，共 14 例。详见 `docs/M6_VERIFICATION.md`。
+> 注：沙箱禁 TLS，`mvn test` 需你本机执行；沙箱内完成静态审查与代码交付。
+
 ---
 
 ## M7 — 输出护栏 + PII 双重脱敏

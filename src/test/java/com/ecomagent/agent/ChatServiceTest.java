@@ -30,9 +30,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 /**
- * M3 对话引擎 + M5 检索编排单测（@SpringBootTest）。
- * - qwenChatModel / RetrievalPipeline mock：避免真实模型调用与检索；
- * - 验证 citations 事件先发、流式 token 输出、成功流记忆落库、失败流补 [truncated] 记忆（§1.2）。
+ * 对话编排单测（@SpringBootTest）。
+ * - qwenChatModel / RetrievalPipeline / SessionStateService / QueryRewriteService mock；
+ * - 验证 citations 先发、流式 token、成功流记忆落库、失败流补 [truncated]。
  */
 @SpringBootTest
 class ChatServiceTest {
@@ -47,20 +47,30 @@ class ChatServiceTest {
     @MockBean
     private VectorStore vectorStore;
 
+    @MockBean
+    private SessionStateService sessionStateService;
+
+    @MockBean
+    private QueryRewriteService queryRewriteService;
+
     @Autowired
     private ChatService chatService;
 
     @Autowired
     private ChatMemory chatMemory;
 
-    private void stubRetrievalEmpty() {
+    private void stubPipeline() {
+        when(sessionStateService.extractState(anyString(), anyString()))
+                .thenReturn(SessionState.empty("conv", "default"));
+        when(queryRewriteService.rewrite(anyString(), anyString()))
+                .thenAnswer(inv -> inv.getArgument(1, String.class));
         when(retrievalPipeline.retrieve(anyString(), anyString()))
                 .thenReturn(new RetrievalResult(List.of(), List.of()));
     }
 
     @Test
     void streamAnswerEmitsCitationsThenTokensAndPersistsMemory() {
-        stubRetrievalEmpty();
+        stubPipeline();
         ChatResponse resp = new ChatResponse(List.of(
                 new Generation(new AssistantMessage("你好世界，七天无理由退货政策如下。"))));
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.just(resp));
@@ -70,7 +80,6 @@ class ChatServiceTest {
                 .collectList().block();
 
         assertNotNull(events);
-        // 第一个事件应为 citations
         assertTrue(events.size() >= 2, "期望先发 citations 事件再发 token 事件");
         assertEquals("citations", events.get(0).event(), "首事件应为 citations");
         assertEquals("token", events.get(1).event(), "次事件应为 token");
@@ -81,7 +90,6 @@ class ChatServiceTest {
                 .collect(Collectors.joining());
         assertTrue(joined.contains("你好世界"), "期望流式内容包含模型回答: " + joined);
 
-        // 记忆落库：1 user + 1 assistant
         List<Message> mem = chatMemory.get(conv);
         assertEquals(2, mem.size(), "期望记忆含 1 user + 1 assistant，实际: " + mem);
         assertTrue(mem.get(1) instanceof AssistantMessage);
@@ -89,7 +97,7 @@ class ChatServiceTest {
 
     @Test
     void streamErrorPersistsTruncatedMemory() {
-        stubRetrievalEmpty();
+        stubPipeline();
         when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.error(new RuntimeException("boom")));
 
         String conv = "conv-err";
@@ -99,7 +107,6 @@ class ChatServiceTest {
             // 错误流：collectList 会抛，忽略；重点验证 onError 补记忆
         }
 
-        // onError 补 [truncated] 标记；user 消息已由 Memory Advisor 写入
         List<Message> mem = chatMemory.get(conv);
         boolean hasTruncated = mem.stream().anyMatch(m ->
                 m instanceof AssistantMessage

@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS session_state (
     id         UUID PRIMARY KEY,
     session_id VARCHAR(64) NOT NULL,
     tenant_id  VARCHAR(64) NOT NULL DEFAULT 'default',
-    state_json JSONB NOT NULL,
+    state_json TEXT NOT NULL,
     version    BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (session_id, tenant_id)

@@ -26,14 +26,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 对话编排服务（M3 对话引擎 + M4 工具 + M5 检索溯源）。
+ * 对话编排服务（M3 对话引擎 + M4 工具 + M5 检索溯源 + M6 状态机/QueryRewrite）。
  *
- * <p>Advisor 链保留 {@link MessageChatMemoryAdvisor}（L1 短期记忆）；RAG 检索改手动编排
- * （{@link RetrievalPipeline}：混合召回 → 重排 → MMR → 编号），以便拿到最终排名列表，
- * 先发 {@code event: citations} 再发 {@code event: token}，并对回答做 {@code [n]} 越界后校验。
+ * <p>流程：信号检测 → L2 状态提取 → 状态机（主动澄清）→ QueryRewrite → 混合检索 → 上下文装配 → 流式。
+ * Advisor 链保留 {@link MessageChatMemoryAdvisor}（L1 短期记忆）；RAG 检索手动编排（{@link RetrievalPipeline}）。
  *
- * <p>流式边界（§1.2）：成功流由 {@link MessageChatMemoryAdvisor} 自动落库 user+assistant；
- * 失败/断连时 Advisor 不写 assistant，故仅在 onError 手动补 [truncated] 标记防丢轮。
+ * <p>流式边界（§1.2）：成功流由 Memory Advisor 自动落库；失败/断连时 onError 补 [truncated] 防丢轮。
  */
 @Service
 public class ChatService {
@@ -43,11 +41,21 @@ public class ChatService {
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
     private final RetrievalPipeline retrievalPipeline;
+    private final SignalDetector signalDetector;
+    private final StateMachine stateMachine;
+    private final SessionStateService sessionStateService;
+    private final QueryRewriteService queryRewriteService;
+    private final ContextAssembler contextAssembler;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
                        ChatMemory chatMemory,
                        RetrievalPipeline retrievalPipeline,
+                       SignalDetector signalDetector,
+                       StateMachine stateMachine,
+                       SessionStateService sessionStateService,
+                       QueryRewriteService queryRewriteService,
+                       ContextAssembler contextAssembler,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -55,6 +63,11 @@ public class ChatService {
                        ObjectMapper objectMapper) {
         this.chatMemory = chatMemory;
         this.retrievalPipeline = retrievalPipeline;
+        this.signalDetector = signalDetector;
+        this.stateMachine = stateMachine;
+        this.sessionStateService = sessionStateService;
+        this.queryRewriteService = queryRewriteService;
+        this.contextAssembler = contextAssembler;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
@@ -67,12 +80,29 @@ public class ChatService {
     }
 
     /**
-     * 流式回答：先发 {@code event: citations}（引用列表），再逐 token 以 {@code event: token} 推送。
+     * 流式回答：先发 {@code event: citations}，再逐 token 以 {@code event: token} 推送。
      */
     public Flux<ServerSentEvent<String>> streamAnswer(String conversationId, String userMessage) {
-        // 1. 检索（同步）：混合召回 → 重排 → MMR → 编号
-        RetrievalResult rr = retrievalPipeline.retrieve(userMessage, TenantContext.get());
-        String systemPrompt = buildRagSystemPrompt(rr);
+        // 1. 信号检测（纯规则，同步）
+        Signal signal = signalDetector.detect(userMessage);
+
+        // 2. L2 状态提取（qwen-turbo 增量，best-effort）
+        SessionState state = sessionStateService.extractState(conversationId, userMessage);
+
+        // 3. 状态机：主动澄清
+        Decision decision = stateMachine.decide(state.intent(), state.orderId(), signal);
+        if (decision.needsClarification()) {
+            return clarificationFlux(decision.reason());
+        }
+
+        // 4. QueryRewrite（L1 感知改写，仅改检索句）
+        String rewritten = queryRewriteService.rewrite(conversationId, userMessage);
+
+        // 5. 混合检索 → 重排 → MMR → 编号
+        RetrievalResult rr = retrievalPipeline.retrieve(rewritten, TenantContext.get());
+
+        // 6. 上下文装配（token 预算 + 状态分区）
+        String systemPrompt = contextAssembler.assemble(state, rr.documents());
 
         ServerSentEvent<String> citationsEvent = ServerSentEvent.<String>builder()
                 .event("citations")
@@ -92,19 +122,11 @@ public class ChatService {
 
         return Flux.concat(Flux.just(citationsEvent), textEvents)
                 .doOnError(e -> persistTruncated(conversationId, acc.toString()))
-                // 成功流：MessageChatMemoryAdvisor 已在流完成时落库，无需手动补
                 .doOnComplete(() -> checkCitations(acc.toString(), rr.citations().size()));
     }
 
-    private String buildRagSystemPrompt(RetrievalResult rr) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("你是电商客服助手。请严格依据以下知识库片段回答，并在引用处标注来源编号 [n]（n 对应片段编号）。\n\n");
-        for (int i = 0; i < rr.documents().size(); i++) {
-            sb.append("[").append(i + 1).append("] ")
-                    .append(rr.documents().get(i).getText()).append("\n\n");
-        }
-        sb.append("若知识库不足以回答，请如实说明，不要编造。");
-        return sb.toString();
+    private Flux<ServerSentEvent<String>> clarificationFlux(String reason) {
+        return Flux.just(ServerSentEvent.<String>builder().event("token").data(reason).build());
     }
 
     /** §5 后处理：校验 [n] 引用不越界（防模型编造引用），越界仅告警不阻断。 */
