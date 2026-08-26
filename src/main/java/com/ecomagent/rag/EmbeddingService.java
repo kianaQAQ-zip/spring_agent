@@ -1,6 +1,7 @@
 package com.ecomagent.rag;
 
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ public class EmbeddingService {
     private final int batchSize;
     private final long interBatchDelayMs;
 
+    @Autowired
     public EmbeddingService(EmbeddingModel embeddingModel) {
         this(embeddingModel, 16, 50);
     }
