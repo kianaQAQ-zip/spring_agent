@@ -1,6 +1,10 @@
 package com.ecomagent.agent;
 
 import com.ecomagent.common.TenantContext;
+import com.ecomagent.tools.AddressChangeTool;
+import com.ecomagent.tools.CouponTool;
+import com.ecomagent.tools.OrderQueryTool;
+import com.ecomagent.tools.RefundTool;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -16,6 +20,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+
+import java.util.Map;
 
 /**
  * 对话编排服务（M3 对话引擎）。
@@ -42,7 +48,11 @@ public class ChatService {
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
                        VectorStore vectorStore,
-                       ChatMemory chatMemory) {
+                       ChatMemory chatMemory,
+                       OrderQueryTool orderQueryTool,
+                       RefundTool refundTool,
+                       AddressChangeTool addressChangeTool,
+                       CouponTool couponTool) {
         // 租户过滤：tenant 为受控常量，拼装 filterExpression 安全无注入风险（M9 接入 TenantContext 动态取值）
         Filter.Expression tenantFilter = new FilterExpressionBuilder()
                 .eq("tenant_id", TenantContext.get())
@@ -65,6 +75,8 @@ public class ChatService {
         this.chatMemory = chatMemory;
         this.chatClient = ChatClient.builder(chatModel)
                 .defaultAdvisors(memoryAdvisor, ragAdvisor)
+                // M4：注册工具层（只读直执行；@ConfirmRequired 工具经 ConfirmationService 落 pending）
+                .defaultTools(orderQueryTool, refundTool, addressChangeTool, couponTool)
                 .build();
     }
 
@@ -79,6 +91,7 @@ public class ChatService {
         Flux<String> content = chatClient.prompt()
                 .user(userMessage)
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                .toolContext(Map.of("conversationId", conversationId))
                 .stream()
                 .content();
 

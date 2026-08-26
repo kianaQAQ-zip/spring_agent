@@ -154,6 +154,10 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M3
 **风险/面试点**：**超时 Reaper + SKIP LOCKED、幂等键、双执行行锁**——三连问已在 §2 落地，面试主动展开。
 
+> ✅ **M4 已构建（2026-08-26）**：`common/ConfirmRequired` 注解 + `tools/OrderQueryTool`(只读) + `RefundTool/AddressChangeTool/CouponTool`(@ConfirmRequired)；`agent/ConfirmationService`（幂等键 hash(conv+tool+params) + 原子 UPDATE 双执行防护 + @Scheduled Reaper + 结果回灌）+ `agent/PendingAction` + `agent/ConfirmationConflictException`；`api/ConfirmController` 六端点；`ChatService.defaultTools(...)` 注册 4 工具 + `toolContext(conversationId)`；`db/init.sql` pending_action 扩展 idempotency_key/expires_at/result/tenant_id。13 单测：`ConfirmationServiceTest`(6) / `ConfirmControllerTest`(6) / `RefundToolTest`(1)。详见 `docs/M4_VERIFICATION.md`。
+> **⚠️ API 调整**：M4 原稿写的 `ToolExecutionStrategy` + `ChatClient.Builder.defaultToolExecutionStrategy(...)` 在 **Spring AI 1.0.0 GA 不存在**。GA 工具拦截点为 `@Tool` 注解 + `defaultTools(...)` + `ToolCallback.call(String, ToolContext)`（工具方法可声明 `ToolContext` 参数自动注入）。故「只读直执行 / 需确认拦截」改为：只读工具直接返回、`@ConfirmRequired` 工具方法内调 `ConfirmationService.request(...)` 落 pending 返回 PENDING，副作用只在坐席 confirm 后执行。
+> 注：沙箱禁 TLS（Maven 连 Maven Central），`mvn test` 需你本机执行；沙箱内完成静态审查与代码交付。
+
 ---
 
 ## M5 — 检索增强：引用溯源 + 重排精排（Citation / Grounding / Rerank）

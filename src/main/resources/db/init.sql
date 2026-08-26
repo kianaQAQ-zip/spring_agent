@@ -60,19 +60,25 @@ CREATE TABLE IF NOT EXISTS message (
 CREATE INDEX IF NOT EXISTS idx_message_conv ON message (conversation_id);
 
 -- ------------------------------------------------------------
--- 5) 待确认动作（§2 确认护栏）：pending/confirmed/rejected
+-- 5) 待确认动作（§2 确认护栏）：pending/confirmed/rejected/cancelled/expired
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pending_action (
-    id           UUID PRIMARY KEY,
+    id              VARCHAR(64) PRIMARY KEY,
     conversation_id VARCHAR(64) NOT NULL,
-    tool         VARCHAR(64) NOT NULL,
-    params       JSONB,
-    status       VARCHAR(16) NOT NULL DEFAULT 'pending',
-    final_params JSONB,
-    operator     VARCHAR(64),
-    executed_at  TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    tenant_id       VARCHAR(64) NOT NULL DEFAULT 'default',
+    tool            VARCHAR(64) NOT NULL,
+    params          TEXT,
+    status          VARCHAR(16) NOT NULL DEFAULT 'pending',
+    idempotency_key VARCHAR(64) NOT NULL,
+    final_params    TEXT,
+    operator        VARCHAR(64),
+    executed_at     TIMESTAMPTZ,
+    result          TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ NOT NULL DEFAULT now() + interval '5 minutes'
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_idem
+    ON pending_action (conversation_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_action (conversation_id, status);
 
 -- ------------------------------------------------------------
