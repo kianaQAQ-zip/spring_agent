@@ -82,6 +82,7 @@
         <dependency>
             <groupId>com.github.benmanes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+            <version>3.1.8</version>
         </dependency>
         <!-- Apache Tika：doc-processor 不可达时的兜底解析（纯文本/HTML/Word） -->
         <dependency>
