@@ -1,7 +1,7 @@
 # M4 验证记录 — 工具层 + 确认护栏（HITL）
 
 > 日期：2026-08-26
-> 状态：✅ 已构建（代码 + 单测已写）；`mvn test` 需本机执行验证。
+> 状态：✅ 已构建 + 本机验证通过（**`mvn test` 29/29 全绿，BUILD SUCCESS**）。
 
 ## 1. 交付内容
 
@@ -37,7 +37,7 @@
 | `ConfirmControllerTest` | `@WebMvcTest` | 确认 200 / 冲突 409 / 改参确认 / 驳回 / 取消 / 查无 404 | 6 |
 | `RefundToolTest` | Mockito | `@ConfirmRequired` 工具落 pending 不真执行、返回 PENDING_CONFIRMATION | 1 |
 
-> 合计新增 13 例；连同 M1–M3 既有 16 例，全量约 29 例。`mvn test` 需本机执行（沙箱禁 TLS）。
+> 合计新增 13 例；连同 M1–M3 既有 16 例，全量 **29 例全部通过**（本机 `mvn test` 已确认）。
 
 ## 4. 运行方式
 
