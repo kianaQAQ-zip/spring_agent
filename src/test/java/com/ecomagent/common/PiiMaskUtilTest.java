@@ -13,17 +13,17 @@ class PiiMaskUtilTest {
 
     @Test
     void masksPhone() {
-        assertEquals("138****8000", PiiMaskUtil.mask("我的手机是13812348000"));
+        assertEquals("我的手机是138****8000", PiiMaskUtil.mask("我的手机是13812348000"));
     }
 
     @Test
     void masksIdCard() {
-        assertEquals("110101********1234", PiiMaskUtil.mask("身份证110101199001011234"));
+        assertEquals("身份证110101********1234", PiiMaskUtil.mask("身份证110101199001011234"));
     }
 
     @Test
     void masksEmail() {
-        assertEquals("a***@example.com", PiiMaskUtil.mask("联系 a@example.com"));
+        assertEquals("联系 a***@example.com", PiiMaskUtil.mask("联系 a@example.com"));
     }
 
     @Test

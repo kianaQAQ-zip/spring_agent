@@ -9,14 +9,14 @@ import java.util.regex.Pattern;
  */
 public final class PiiMaskUtil {
 
-    // 手机号：138****8000
-    private static final Pattern PHONE = Pattern.compile("(1[3-9]\\d)\\d{4}(\\d{4})");
-    // 身份证：保留前6后4，中间打码
-    private static final Pattern ID_CARD = Pattern.compile("(\\d{6})\\d{8}(\\d{4})");
+    // 手机号：138****8000（前后非数字，避免误匹配身份证/银行卡内的子串）
+    private static final Pattern PHONE = Pattern.compile("(?<!\\d)(1[3-9]\\d)\\d{4}(\\d{4})(?!\\d)");
+    // 身份证：保留前6后4，中间打码（前后非数字）
+    private static final Pattern ID_CARD = Pattern.compile("(?<!\\d)(\\d{6})\\d{8}(\\d{4})(?!\\d)");
     // 邮箱：保留首字符与域名
     private static final Pattern EMAIL = Pattern.compile("([a-zA-Z0-9._+])[a-zA-Z0-9._+]*(@[a-zA-Z0-9.]+)");
-    // 银行卡：保留前4后4，中间打码（16-19 位）
-    private static final Pattern BANK_CARD = Pattern.compile("(\\d{4})\\d{8,11}(\\d{4})");
+    // 银行卡：保留前4后4，中间打码（16-19 位，前后非数字）
+    private static final Pattern BANK_CARD = Pattern.compile("(?<!\\d)(\\d{4})\\d{8,11}(\\d{4})(?!\\d)");
 
     private PiiMaskUtil() {
     }
