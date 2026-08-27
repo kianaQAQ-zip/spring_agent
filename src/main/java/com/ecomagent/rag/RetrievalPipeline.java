@@ -43,6 +43,7 @@ public class RetrievalPipeline {
             documents.add(d);
             citations.add(new Citation(
                     i + 1,
+                    chunkIndexOf(d),
                     RagDocUtils.str(d.getMetadata().get(RagDocUtils.KEY_DOC_ID)),
                     RagDocUtils.str(d.getMetadata().get(RagDocUtils.KEY_SOURCE)),
                     d.getText(),
@@ -54,6 +55,15 @@ public class RetrievalPipeline {
 
     private Integer pageOf(Document d) {
         String raw = RagDocUtils.str(d.getMetadata().get(RagDocUtils.KEY_PAGE));
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer chunkIndexOf(Document d) {
+        String raw = RagDocUtils.str(d.getMetadata().get(RagDocUtils.KEY_CHUNK_INDEX));
         try {
             return Integer.parseInt(raw);
         } catch (NumberFormatException e) {

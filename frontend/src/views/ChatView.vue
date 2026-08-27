@@ -1,7 +1,7 @@
 <script setup>
 import { ref, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { streamChat } from '../api'
+import { streamChat, getDocChunk } from '../api'
 import { useChatStore } from '../stores/chat'
 
 const store = useChatStore()
@@ -10,7 +10,7 @@ const messages = ref([])          // { role, content, citations, streaming }
 const streaming = ref(false)
 const esRef = ref(null)
 const listRef = ref(null)
-const sourceDialog = ref({ visible: false, title: '', content: '' })
+const sourceDrawer = ref({ visible: false, title: '', highlight: '', full: '' })
 
 // 把 [n] 拆成文本段与引用段，便于渲染可点击 chip
 function parseSegments(content) {
@@ -60,11 +60,29 @@ function showSource(msg, index) {
     ElMessage.warning('未找到该引用来源')
     return
   }
-  sourceDialog.value = {
-    visible: true,
-    title: `${c.source || '知识库来源'}${c.page ? ` · 第 ${c.page} 页` : ''}`,
-    content: c.chunkContent || '（无内容）'
+  const fallback = () => {
+    sourceDrawer.value = {
+      visible: true,
+      title: `${c.source || '知识库来源'}${c.page ? ` · 第 ${c.page} 页` : ''}`,
+      highlight: c.chunkContent || '',
+      full: ''
+    }
   }
+  if (c.chunkIndex == null) {
+    fallback()
+    return
+  }
+  // M8b 源抽屉：取回全文 + 定位 chunk
+  getDocChunk(c.docId, c.chunkIndex)
+    .then((data) => {
+      sourceDrawer.value = {
+        visible: true,
+        title: `${data.source || c.source}${c.page ? ` · 第 ${c.page} 页` : ''}`,
+        highlight: data.chunkContent || c.chunkContent || '',
+        full: data.parsedText || ''
+      }
+    })
+    .catch(fallback)
 }
 
 function newConversation() {
@@ -110,9 +128,17 @@ function newConversation() {
       </el-button>
     </div>
 
-    <el-dialog v-model="sourceDialog.visible" :title="sourceDialog.title" width="640px">
-      <div class="source-content">{{ sourceDialog.content }}</div>
-    </el-dialog>
+    <el-drawer v-model="sourceDrawer.visible" :title="sourceDrawer.title" size="46%">
+      <div v-if="sourceDrawer.highlight" class="highlight">
+        <div class="hl-label">命中片段</div>
+        <div class="hl-content">{{ sourceDrawer.highlight }}</div>
+      </div>
+      <div v-if="sourceDrawer.full" class="full">
+        <div class="hl-label">原文全文</div>
+        <div class="full-content">{{ sourceDrawer.full }}</div>
+      </div>
+      <el-empty v-if="!sourceDrawer.highlight && !sourceDrawer.full" description="无可用原文" :image-size="60" />
+    </el-drawer>
   </div>
 </template>
 
@@ -137,5 +163,8 @@ function newConversation() {
 .cursor { animation: blink 1s steps(1) infinite; color: #409eff; }
 @keyframes blink { 50% { opacity: 0; } }
 .inputbar { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid #ebeef5; }
-.source-content { max-height: 420px; overflow-y: auto; white-space: pre-wrap; }
+.highlight { margin-bottom: 16px; }
+.hl-label { font-size: 12px; color: #909399; margin-bottom: 6px; }
+.hl-content { background: #fff7e6; border: 1px solid #ffe7ba; border-radius: 6px; padding: 12px; white-space: pre-wrap; }
+.full-content { max-height: 60vh; overflow-y: auto; white-space: pre-wrap; font-size: 13px; color: #303133; }
 </style>

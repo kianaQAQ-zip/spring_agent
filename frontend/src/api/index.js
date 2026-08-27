@@ -17,6 +17,18 @@ export function health() {
   return request('/chat/health')
 }
 
+// ---- 知识库 ----
+export function uploadDoc(file) {
+  const form = new FormData()
+  form.append('file', file)
+  return fetch('/kb/upload', { method: 'POST', body: form })
+    .then((res) => res.json())
+    .then((body) => {
+      if (body.code !== 0) throw new Error(body.message || '上传失败')
+      return body.data
+    })
+}
+
 // ---- 坐席确认台 ----
 export function listPending(conversationId) {
   return request(`/confirm/pending?conversationId=${encodeURIComponent(conversationId)}`)

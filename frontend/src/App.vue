@@ -13,6 +13,7 @@ const active = computed(() => route.path)
       <nav class="nav">
         <router-link to="/chat" :class="{ active: active === '/chat' }">客户聊天窗</router-link>
         <router-link to="/confirm" :class="{ active: active === '/confirm' }">坐席确认台</router-link>
+        <router-link to="/kb" :class="{ active: active === '/kb' }">知识库上传</router-link>
       </nav>
     </header>
     <main class="main">

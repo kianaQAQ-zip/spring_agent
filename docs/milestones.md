@@ -280,6 +280,9 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M2, M5（M8a 已建脚手架，本里程碑复用）
 **风险/面试点**：大文本 `parsed_text` 渲染性能 → 抽屉内虚拟滚动/分段加载。
 
+> ✅ **M8b 已构建（2026-08-27）**：`frontend/src/views/KbView.vue`（拖拽上传 + 结果展示）+ `ChatView` 源抽屉（点 `[n]` → 命中片段高亮 + 原文全文）+ 三视图路由/顶栏；`api/index.js` 增 `uploadDoc`。后端小补：`rag/Citation` 增 `chunkIndex` 字段（`RetrievalPipeline` 从 metadata 提取），使 SSE citations 携带 chunkIndex 供源抽屉定位。详见 `docs/M8b_VERIFICATION.md`。
+> 注：前端 `npm run dev` 需本机执行验证；沙箱禁 npm 缓存，仅交付源码。
+
 ---
 
 ## M9 — 可观测 + 评估 + 多租户接缝 + 交付文档
