@@ -1,0 +1,22 @@
+[
+  { "id": "R1", "category": "refund", "query": "我要退 ORD-1001 的耳机", "keywords": ["退款", "ORD-1001"], "expectedIntent": "REFUND" },
+  { "id": "R2", "category": "refund", "query": "这个耳机有质量问题，能退钱吗", "keywords": ["退款"], "expectedIntent": "REFUND" },
+  { "id": "R3", "category": "refund", "query": "七天无理由退货怎么退 ORD-2002", "keywords": ["七天无理由", "ORD-2002"], "expectedIntent": "REFUND" },
+  { "id": "R4", "category": "refund", "query": "退款到账要多久", "keywords": ["到账"], "expectedIntent": "REFUND" },
+  { "id": "R5", "category": "refund", "query": "我不想要了，帮我退了", "keywords": ["退"], "expectedIntent": "REFUND" },
+  { "id": "L1", "category": "logistics", "query": "ORD-1001 到哪了", "keywords": ["物流", "ORD-1001"], "expectedIntent": "ORDER_QUERY" },
+  { "id": "L2", "category": "logistics", "query": "我的订单发货了吗", "keywords": ["发货"], "expectedIntent": "ORDER_QUERY" },
+  { "id": "L3", "category": "logistics", "query": "查一下 ORD-3003 的物流轨迹", "keywords": ["ORD-3003", "物流"], "expectedIntent": "ORDER_QUERY" },
+  { "id": "L4", "category": "logistics", "query": "快递什么时候到", "keywords": ["快递"], "expectedIntent": "ORDER_QUERY" },
+  { "id": "A1", "category": "address", "query": "把 ORD-1001 的收货地址改了", "keywords": ["地址", "ORD-1001"], "expectedIntent": "ADDRESS_CHANGE" },
+  { "id": "A2", "category": "address", "query": "我搬家了，改一下收货地址", "keywords": ["地址"], "expectedIntent": "ADDRESS_CHANGE" },
+  { "id": "A3", "category": "address", "query": "地址填错了能改吗", "keywords": ["地址"], "expectedIntent": "ADDRESS_CHANGE" },
+  { "id": "C1", "category": "coupon", "query": "给我发张优惠券", "keywords": ["优惠券"], "expectedIntent": "COUPON" },
+  { "id": "C2", "category": "coupon", "query": "有没有满减券可以领", "keywords": ["满减", "券"], "expectedIntent": "COUPON" },
+  { "id": "C3", "category": "coupon", "query": "发我一张无门槛券", "keywords": ["券"], "expectedIntent": "COUPON" },
+  { "id": "K1", "category": "knowledge", "query": "七天无理由退货政策怎么规定的", "keywords": ["七天无理由", "退货"], "expectedIntent": "KNOWLEDGE_QA" },
+  { "id": "K2", "category": "knowledge", "query": "换货和退货有什么区别", "keywords": ["换货", "退货"], "expectedIntent": "KNOWLEDGE_QA" },
+  { "id": "K3", "category": "knowledge", "query": "运费险怎么赔付", "keywords": ["运费险"], "expectedIntent": "KNOWLEDGE_QA" },
+  { "id": "O1", "category": "out_of_scope", "query": "帮我写一首关于春天的诗", "keywords": [], "expectedIntent": "UNKNOWN" },
+  { "id": "O2", "category": "out_of_scope", "query": "明天股市会涨吗", "keywords": [], "expectedIntent": "UNKNOWN" }
+]

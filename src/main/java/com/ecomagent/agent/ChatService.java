@@ -47,6 +47,7 @@ public class ChatService {
     private final QueryRewriteService queryRewriteService;
     private final ContextAssembler contextAssembler;
     private final OutputGuardrailService outputGuardrailService;
+    private final CostTrackingAdvisor costTrackingAdvisor;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
@@ -58,6 +59,7 @@ public class ChatService {
                        QueryRewriteService queryRewriteService,
                        ContextAssembler contextAssembler,
                        OutputGuardrailService outputGuardrailService,
+                       CostTrackingAdvisor costTrackingAdvisor,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -71,12 +73,13 @@ public class ChatService {
         this.queryRewriteService = queryRewriteService;
         this.contextAssembler = contextAssembler;
         this.outputGuardrailService = outputGuardrailService;
+        this.costTrackingAdvisor = costTrackingAdvisor;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
 
         this.chatClient = ChatClient.builder(chatModel)
-                .defaultAdvisors(memoryAdvisor)
+                .defaultAdvisors(memoryAdvisor, costTrackingAdvisor)
                 // M4：工具层（只读直执行；@ConfirmRequired 工具经 ConfirmationService 落 pending）
                 .defaultTools(orderQueryTool, refundTool, addressChangeTool, couponTool)
                 .build();
