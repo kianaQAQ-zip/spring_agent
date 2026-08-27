@@ -11,6 +11,7 @@ import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -35,6 +36,12 @@ public class CostTrackingAdvisor implements CallAdvisor, StreamAdvisor {
     @Override
     public String getName() {
         return "CostTracking";
+    }
+
+    @Override
+    public int getOrder() {
+        // 最外层，包住 Memory Advisor 与模型调用，捕获最终 token 用量
+        return Ordered.LOWEST_PRECEDENCE;
     }
 
     @Override
