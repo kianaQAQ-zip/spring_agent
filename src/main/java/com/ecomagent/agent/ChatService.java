@@ -1,7 +1,6 @@
 package com.ecomagent.agent;
 
 import com.ecomagent.common.TenantContext;
-import com.ecomagent.eval.CostCalculator;
 import com.ecomagent.rag.CitationValidator;
 import com.ecomagent.rag.RetrievalPipeline;
 import com.ecomagent.rag.RetrievalResult;
@@ -17,9 +16,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
@@ -50,7 +47,6 @@ public class ChatService {
     private final QueryRewriteService queryRewriteService;
     private final ContextAssembler contextAssembler;
     private final OutputGuardrailService outputGuardrailService;
-    private final CostCalculator costCalculator;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
@@ -62,7 +58,6 @@ public class ChatService {
                        QueryRewriteService queryRewriteService,
                        ContextAssembler contextAssembler,
                        OutputGuardrailService outputGuardrailService,
-                       CostCalculator costCalculator,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -76,7 +71,6 @@ public class ChatService {
         this.queryRewriteService = queryRewriteService;
         this.contextAssembler = contextAssembler;
         this.outputGuardrailService = outputGuardrailService;
-        this.costCalculator = costCalculator;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
@@ -125,9 +119,7 @@ public class ChatService {
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
                 .toolContext(Map.of("conversationId", conversationId))
                 .stream()
-                .chatResponse()
-                .doOnNext(this::trackUsage)
-                .map(r -> r.getResult().getOutput().getText())
+                .content()
                 .doOnNext(acc::append)
                 // M7：PII 输出脱敏（§5 输出缝），逐 token 掩码后推前端
                 .map(token -> ServerSentEvent.<String>builder()
@@ -164,23 +156,6 @@ public class ChatService {
         if (result.failed()) {
             log.warn("事实一致性 FAIL，转人工话术: {}", result.reason());
         }
-    }
-
-    /** §9 可观测：从流式 ChatResponse 读 token 用量，估算成本打日志（不自建表）。 */
-    private void trackUsage(ChatResponse response) {
-        if (response.getMetadata() == null || response.getMetadata().getUsage() == null) {
-            return;
-        }
-        Usage usage = response.getMetadata().getUsage();
-        int prompt = nz(usage.getPromptTokens());
-        int completion = nz(usage.getCompletionTokens());
-        double cost = costCalculator.estimate("qwen-plus", prompt, completion);
-        log.info("token cost: prompt={} completion={} est=¥{}",
-                prompt, completion, String.format("%.6f", cost));
-    }
-
-    private int nz(Integer i) {
-        return i == null ? 0 : i;
     }
 
     private String contextOf(RetrievalResult rr) {
