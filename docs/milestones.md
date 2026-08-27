@@ -303,7 +303,7 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：全部
 **面试点**：可观测用框架原生（不自建表，呼应你纠正）；评估集四维设计证明"答得好"；tenant 接缝证明 enterprise 思维。
 
-> ✅ **M9 已构建（2026-08-27）**：`eval/CostCalculator`（token 成本估算纯函数）+ `eval/EvalRunner`（四维判分：关键词/意图/接地/忠实度）+ `eval/eval-set.json`（20 条）+ `common/TenantInterceptor` + `config/WebConfig`（X-Tenant-Id 注入）+ `README.md`（零改动复现）。测试：`CostCalculatorTest`(2)/`EvalRunnerTest`(3)。详见 `docs/M9_VERIFICATION.md`。
+> ✅ **M9 已构建（2026-08-27）+ 本机验证 69/69 全绿**：`eval/CostCalculator`（token 成本估算纯函数）+ `eval/EvalRunner`（四维判分：关键词/意图/接地/忠实度）+ `eval/eval-set.json`（20 条）+ `common/TenantInterceptor` + `config/WebConfig`（X-Tenant-Id 注入）+ `README.md`（零改动复现）。测试：`CostCalculatorTest`(2)/`EvalRunnerTest`(3)。详见 `docs/M9_VERIFICATION.md`。
 > 注：沙箱禁 TLS，`mvn test` 需你本机执行；沙箱内完成静态审查与代码交付。
 
 ---
