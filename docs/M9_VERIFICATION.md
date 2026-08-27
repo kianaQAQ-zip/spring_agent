@@ -7,14 +7,14 @@
 
 | 模块 | 类/文件 | 职责 |
 | --- | --- | --- |
-| 可观测 | `eval/CostCalculator` + `agent/CostTrackingAdvisor` | 每轮 token 用量/成本汇总（框架原生 Advisor，不自建表） |
+| 可观测 | `eval/CostCalculator` + `agent/ChatService.trackUsage` | 每轮 token 用量/成本汇总（经流式 `chatResponse()` 读 Usage，不自建表） |
 | 评估 | `eval/EvalCase` `AgentAnswer` `CaseScore` `EvalReport` `EvalRunner` + `eval/eval-set.json` | 四维判分 + 20 条评估集 + JSON/HTML 报告 |
 | 多租户 | `common/TenantInterceptor` + `config/WebConfig` | 请求头 `X-Tenant-Id` 注入 `TenantContext`，请求结束清理 |
 | 交付 | `README.md` | 零改动复现整套 demo 的起栈步骤 |
 
 ## 2. 关键设计决策
 
-1. **可观测用框架原生（不自建表）**：`CostTrackingAdvisor` 实现 Spring AI 原生 `CallAdvisor` + `StreamAdvisor`，从响应 metadata 的 `Usage` 读 token 数，经 `CostCalculator` 估成本后打日志；与 Spring AI 自带的 Micrometer/OTel observation 互补（observation 已由依赖自动配置）。
+1. **可观测用框架原生（不自建表）**：`ChatService` 用 `.stream().chatResponse()` 拿到流式 `ChatResponse`，在 `trackUsage` 中读 `metadata.usage` 的 token 数，经 `CostCalculator` 估成本后打日志；与 Spring AI 自带的 Micrometer/OTel observation 互补（observation 已由依赖自动配置）。
 2. **评估四维判分**：关键词覆盖 / 意图正确 / 引用接地 / 忠实度，各 0~1，平均 ≥ 0.6 判 pass；输出聚合分 + 每用例明细，JSON/HTML 可作 CI 门禁。`Agent` 接口由调用方注入（生产接真实回答、测试 mock），判分逻辑纯函数化可单测。
 3. **评估集 20 条最小集**：refund×5 / logistics×4 / address×3 / coupon×3 / knowledge×3 / out_of_scope×2（含越界反面 case），覆盖工具四类 + 纯知识 + 幻觉反面。
 4. **多租户接缝收口**：`TenantInterceptor` 从 `X-Tenant-Id` 头注入 `TenantContext`（默认 `default`），所有向量/状态查询已带 `filterExpression=tenant_id==...`（M2/M3/M5 已就位，此处收口到 HTTP 入口）。
