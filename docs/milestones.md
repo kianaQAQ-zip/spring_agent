@@ -234,6 +234,9 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M3, M5
 **面试点**：双重脱敏"何时调"歧义已消除（入库 + 输出 + 日志三缝）。
 
+> ✅ **M7 已构建（2026-08-27）**：`common/PiiMaskUtil` 补银行卡掩码（三道缝统一入口）+ `agent/OutputGuardrailService`（PII 输出脱敏 + 越界拒答规则 + 事实一致性 LLM-as-judge）；`ChatService` 流式 token 逐条脱敏 + 完成时越界/一致性校验。测试：`PiiMaskUtilTest`(5)/`OutputGuardrailServiceTest`(5) + 更新 `ChatServiceTest`，共 12 例。详见 `docs/M7_VERIFICATION.md`。
+> 注：沙箱禁 TLS，`mvn test` 需你本机执行；沙箱内完成静态审查与代码交付。
+
 ---
 
 ## M8a — 前端：客户聊天窗 + 坐席确认台（Vue3 + Vite + ElementPlus）

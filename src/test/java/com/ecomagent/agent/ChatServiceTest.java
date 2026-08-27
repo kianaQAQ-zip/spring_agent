@@ -53,6 +53,9 @@ class ChatServiceTest {
     @MockBean
     private QueryRewriteService queryRewriteService;
 
+    @MockBean
+    private OutputGuardrailService outputGuardrailService;
+
     @Autowired
     private ChatService chatService;
 
@@ -66,6 +69,8 @@ class ChatServiceTest {
                 .thenAnswer(inv -> inv.getArgument(1, String.class));
         when(retrievalPipeline.retrieve(anyString(), anyString()))
                 .thenReturn(new RetrievalResult(List.of(), List.of()));
+        when(outputGuardrailService.judge(anyString(), anyString()))
+                .thenReturn(new OutputGuardrailService.GuardrailResult("PASS", null));
     }
 
     @Test

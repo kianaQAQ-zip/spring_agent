@@ -46,6 +46,7 @@ public class ChatService {
     private final SessionStateService sessionStateService;
     private final QueryRewriteService queryRewriteService;
     private final ContextAssembler contextAssembler;
+    private final OutputGuardrailService outputGuardrailService;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
@@ -56,6 +57,7 @@ public class ChatService {
                        SessionStateService sessionStateService,
                        QueryRewriteService queryRewriteService,
                        ContextAssembler contextAssembler,
+                       OutputGuardrailService outputGuardrailService,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -68,6 +70,7 @@ public class ChatService {
         this.sessionStateService = sessionStateService;
         this.queryRewriteService = queryRewriteService;
         this.contextAssembler = contextAssembler;
+        this.outputGuardrailService = outputGuardrailService;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
@@ -118,11 +121,18 @@ public class ChatService {
                 .stream()
                 .content()
                 .doOnNext(acc::append)
-                .map(token -> ServerSentEvent.<String>builder().event("token").data(token).build());
+                // M7：PII 输出脱敏（§5 输出缝），逐 token 掩码后推前端
+                .map(token -> ServerSentEvent.<String>builder()
+                        .event("token")
+                        .data(outputGuardrailService.maskOutput(token))
+                        .build());
 
         return Flux.concat(Flux.just(citationsEvent), textEvents)
                 .doOnError(e -> persistTruncated(conversationId, acc.toString()))
-                .doOnComplete(() -> checkCitations(acc.toString(), rr.citations().size()));
+                .doOnComplete(() -> {
+                    checkCitations(acc.toString(), rr.citations().size());
+                    runGuardrail(acc.toString(), contextOf(rr));
+                });
     }
 
     private Flux<ServerSentEvent<String>> clarificationFlux(String reason) {
@@ -135,6 +145,25 @@ public class ChatService {
         if (!out.isEmpty()) {
             log.warn("回答含越界引用 [n]（n>{}）: {}", maxIndex, out);
         }
+    }
+
+    /** §1.1 输出护栏：越界强断言 + 事实一致性（LLM-as-judge），失败仅告警（转人工话术在 M8 事件化）。 */
+    private void runGuardrail(String answer, String context) {
+        if (outputGuardrailService.isOutOfScope(answer)) {
+            log.warn("回答疑似越界强断言，建议转人工: {}", answer);
+        }
+        OutputGuardrailService.GuardrailResult result = outputGuardrailService.judge(answer, context);
+        if (result.failed()) {
+            log.warn("事实一致性 FAIL，转人工话术: {}", result.reason());
+        }
+    }
+
+    private String contextOf(RetrievalResult rr) {
+        StringBuilder sb = new StringBuilder();
+        for (var d : rr.documents()) {
+            sb.append(d.getText()).append('\n');
+        }
+        return sb.toString();
     }
 
     private String toJson(Object obj) {
