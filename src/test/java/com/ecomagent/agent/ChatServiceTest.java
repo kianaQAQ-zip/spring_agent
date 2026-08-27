@@ -69,6 +69,9 @@ class ChatServiceTest {
                 .thenAnswer(inv -> inv.getArgument(1, String.class));
         when(retrievalPipeline.retrieve(anyString(), anyString()))
                 .thenReturn(new RetrievalResult(List.of(), List.of()));
+        // PII 脱敏 mock 需透传原文，否则 token 数据为 null 导致流内容为空
+        when(outputGuardrailService.maskOutput(anyString()))
+                .thenAnswer(inv -> inv.getArgument(0, String.class));
         when(outputGuardrailService.judge(anyString(), anyString()))
                 .thenReturn(new OutputGuardrailService.GuardrailResult("PASS", null));
     }
