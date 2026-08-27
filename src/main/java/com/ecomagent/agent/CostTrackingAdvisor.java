@@ -5,23 +5,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
-import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
-import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
-import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
-import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
+import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
+import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
 
 /**
  * 成本追踪 Advisor（§9 可观测）：每轮汇总 token 用量与估算成本。
  *
- * <p>用 Spring AI 原生 Advisor 机制（不自建表）；仅从响应 metadata 的 {@link Usage} 读取并打日志，
- * 与 Spring AI 自带的 Micrometer/OTel trace（observation）互补。
+ * <p>用 Spring AI 原生 {@link BaseAdvisor} 的 before/after 钩子（不自建表）：
+ * 在 {@code after} 阶段从响应 metadata 的 {@link Usage} 读 token 数，经 {@link CostCalculator}
+ * 估成本后打日志；与 Spring AI 自带的 Micrometer/OTel observation 互补。
  */
 @Component
-public class CostTrackingAdvisor implements CallAdvisor, StreamAdvisor {
+public class CostTrackingAdvisor implements BaseAdvisor {
 
     private static final Logger log = LoggerFactory.getLogger(CostTrackingAdvisor.class);
     private static final String MODEL = "qwen-plus";
@@ -39,28 +37,27 @@ public class CostTrackingAdvisor implements CallAdvisor, StreamAdvisor {
 
     @Override
     public int getOrder() {
-        // ChatModelStreamAdvisor 内部用 LOWEST_PRECEDENCE(MAX) 调模型；本 advisor 需更低优先级包住它，
-        // 才能在其产出响应后捕获 token 用量。用 0（介于 Memory 与 Model 之间）。
+        // 内部 ChatModelStreamAdvisor 用 LOWEST_PRECEDENCE 调模型；本 advisor 用 0 包在模型之外，
+        // 使 after 阶段能拿到最终响应的 token 用量。
         return 0;
     }
 
     @Override
-    public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
-        ChatClientResponse response = chain.nextCall(request);
+    public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
+        return request;
+    }
+
+    @Override
+    public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         track(response.chatResponse());
         return response;
     }
 
-    @Override
-    public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain chain) {
-        return chain.nextStream(request).doOnNext(r -> track(r.chatResponse()));
-    }
-
     private void track(ChatResponse response) {
-        Usage usage = response.getMetadata().getUsage();
-        if (usage == null) {
+        if (response.getMetadata() == null || response.getMetadata().getUsage() == null) {
             return;
         }
+        Usage usage = response.getMetadata().getUsage();
         int prompt = nz(usage.getPromptTokens());
         int completion = nz(usage.getCompletionTokens());
         double cost = costCalculator.estimate(MODEL, prompt, completion);
