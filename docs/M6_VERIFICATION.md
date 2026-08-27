@@ -1,7 +1,7 @@
 # M6 验证记录 — 三层上下文状态机 + QueryRewrite
 
 > 日期：2026-08-26
-> 状态：✅ 已构建（代码 + 单测已写）；`mvn test` 需本机执行验证。
+> 状态：✅ 已构建 + 本机验证通过（**`mvn test` 54/54 全绿，BUILD SUCCESS**）。
 
 ## 1. 交付内容
 
@@ -36,7 +36,7 @@
 | `SessionStateServiceTest` | `@SpringBootTest`(H2) | 增量提取落库 / LLM 失败降级 | 2 |
 | `ChatServiceTest`（更新） | `@SpringBootTest` | citations 先发 + 流式 + 记忆/截断 | 2 |
 
-> 新增/更新 14 例；连同 M1–M5 既有 42 例，全量约 56 例。`mvn test` 需本机执行。
+> 新增/更新 14 例；连同 M1–M5 既有 42 例，全量 **54 例全部通过**（本机 `mvn test` 已确认）。
 
 ## 4. 运行方式
 
