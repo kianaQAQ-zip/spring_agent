@@ -259,6 +259,9 @@ M9 可观测+评估+多租户接缝+交付文档 (依赖全部)
 **依赖**：M3, M4, M5, M7
 **风险/面试点**：客户/坐席双 SSE 通道 → 用单 SSE + `event` 类型区分，或 WebSocket；输入框禁用对齐 M6 串行。
 
+> ✅ **M8a 已构建（2026-08-27）**：`frontend/` Vue3+Vite+ElementPlus+Pinia+Router 脚手架；`src/api/index.js`（REST + EventSource SSE）；`ChatView`（流式渲染 + `[n]` 引用 chip + 流式中禁用输入）；`ConfirmView` + `PendingCard`（2s 轮询 pending + 四动作 + 超时置灰 + 审计历史）；Vite proxy 转发 `/chat /kb /confirm /actuator` 免 CORS。详见 `docs/M8a_VERIFICATION.md`。
+> 注：前端 `npm install && npm run dev` 需本机执行验证（`localhost:5173`）；沙箱禁 npm 缓存，仅交付源码。
+
 ---
 
 ## M8b — 前端：知识库上传页 + 源抽屉（Vue3 + Vite + ElementPlus）
