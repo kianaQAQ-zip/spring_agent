@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS vector_store_embedding_idx
 -- 2) 结构化会话状态（§8 Layer 2）：intent / order_id / emotion ...
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS session_state (
-    id         UUID PRIMARY KEY,
+    id         VARCHAR(64) PRIMARY KEY,
     session_id VARCHAR(64) NOT NULL,
     tenant_id  VARCHAR(64) NOT NULL DEFAULT 'default',
     state_json TEXT NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS session_state (
 -- 3) 会话
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS conversation (
-    id          UUID PRIMARY KEY,
+    id          VARCHAR(64) PRIMARY KEY,
     conversation_id VARCHAR(64) NOT NULL,
     tenant_id   VARCHAR(64) NOT NULL DEFAULT 'default',
     title       VARCHAR(255),
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS conversation (
 -- 4) 消息（PII 落库前脱敏）
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS message (
-    id          UUID PRIMARY KEY,
+    id          VARCHAR(64) PRIMARY KEY,
     conversation_id VARCHAR(64) NOT NULL,
     tenant_id   VARCHAR(64) NOT NULL DEFAULT 'default',
     role        VARCHAR(16) NOT NULL,
@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_action (conversation_id
 -- 6) 知识文档（Tika/MinerU 解析全文，供 M5 点击看原文）
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS knowledge_doc (
-    id           UUID PRIMARY KEY,
+    id           VARCHAR(64) PRIMARY KEY,
     doc_id       VARCHAR(64) NOT NULL,
     tenant_id    VARCHAR(64) NOT NULL DEFAULT 'default',
     source       VARCHAR(512),
