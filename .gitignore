@@ -33,6 +33,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 doc-processor/.venv/
+doc-processor/.uv-cache/
 
 # === Agent 内部工作记忆（非项目代码） ===
 .workbuddy/

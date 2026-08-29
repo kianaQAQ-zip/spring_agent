@@ -89,3 +89,12 @@ class CaptionRequest(BaseModel):
 
 class CaptionResponse(BaseModel):
     caption: str
+
+
+# ---------------------------------------------------------------------------
+# /export
+# ---------------------------------------------------------------------------
+class ExportRequest(BaseModel):
+    format: str = Field(..., description="txt|md|docx|xlsx|pdf")
+    text: str = Field("", description="导出正文（纯文本/已结构化文本）")
+    blocks: list[ParseBlock] = Field(default_factory=list, description="可选结构化块，用于重建标题/表格")

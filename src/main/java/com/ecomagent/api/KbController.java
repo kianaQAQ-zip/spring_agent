@@ -5,6 +5,8 @@ import com.ecomagent.rag.DocChunk;
 import com.ecomagent.rag.IngestionResult;
 import com.ecomagent.rag.KbIngestionService;
 import com.ecomagent.rag.KnowledgeDoc;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,5 +58,18 @@ public class KbController {
             return ApiResponse.fail(404, "未找到文档: " + docId);
         }
         return ApiResponse.ok(docChunk);
+    }
+
+    @GetMapping("/doc/{docId}/export")
+    public ResponseEntity<?> export(@PathVariable String docId,
+                                    @RequestParam(value = "format", defaultValue = "md") String format) {
+        KbIngestionService.DocExport r = ingestionService.exportDoc(docId, format);
+        if (r == null) {
+            return ResponseEntity.ok(ApiResponse.fail(400, "导出失败：文档不存在、doc-processor 不可达或格式不支持（txt/md/docx/xlsx/pdf）"));
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(r.contentType()))
+                .header("Content-Disposition", "attachment; filename=\"" + docId + "." + r.ext() + "\"")
+                .body(r.bytes());
     }
 }

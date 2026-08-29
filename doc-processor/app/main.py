@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .models import ApiResponse
-from .routers import parse, clean, rerank, caption
+from .routers import parse, clean, rerank, caption, export
 
 app = FastAPI(title="doc-processor", version="0.1.0", description="电商客服 Agent 文档处理子项目")
 
@@ -17,6 +17,7 @@ app.include_router(parse.router)
 app.include_router(clean.router)
 app.include_router(rerank.router)
 app.include_router(caption.router)
+app.include_router(export.router)
 
 
 @app.exception_handler(Exception)

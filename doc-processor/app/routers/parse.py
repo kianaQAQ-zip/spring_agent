@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from ..cleaner import DocumentCleaner, estimate_tokens
 from ..models import ApiResponse, ParseBlock, ParseData, ParseOptions
+from ..parsers import UnsupportedFormatError, parse_docx, parse_markdown, parse_xlsx
 
 router = APIRouter(prefix="/api/v1", tags=["parse"])
 _cleaner = DocumentCleaner()
@@ -145,6 +146,16 @@ def _parse_plain(filename: str, data: bytes, do_clean: bool) -> ParseData:
     return _finalize(blocks, scores, ["text_fallback"])
 
 
+def _parse_structured(parser_fn, data: bytes, do_clean: bool, flag: str) -> ParseData:
+    """docx/xlsx/md 结构化解析统一封装：解析 →（可选）清洗 → 定稿。"""
+    blocks = parser_fn(data, do_clean)
+    if do_clean:
+        blocks, scores = _apply_clean(blocks)
+    else:
+        scores = [1.0] * len(blocks)
+    return _finalize(blocks, scores, [flag])
+
+
 @router.post("/parse")
 async def parse(
     file: UploadFile = File(...),
@@ -157,13 +168,26 @@ async def parse(
 
     data = await file.read()
     filename = file.filename or "upload.bin"
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
 
-    result: ParseData | None = None
-    if filename.lower().endswith(".pdf"):
-        result = _parse_with_mineru(filename, data, opts.clean)
-        if result is None:
-            result = _parse_with_pymupdf(filename, data, opts.clean)
-    if result is None:
-        result = _parse_plain(filename, data, opts.clean)
+    try:
+        result: ParseData | None = None
+        if ext == "pdf":
+            result = _parse_with_mineru(filename, data, opts.clean)
+            if result is None:
+                result = _parse_with_pymupdf(filename, data, opts.clean)
+            if result is None:
+                result = _parse_plain(filename, data, opts.clean)
+        elif ext == "docx":
+            result = _parse_structured(parse_docx, data, opts.clean, "docx")
+        elif ext == "xlsx":
+            result = _parse_structured(parse_xlsx, data, opts.clean, "xlsx")
+        elif ext in ("md", "markdown"):
+            result = _parse_structured(parse_markdown, data, opts.clean, "markdown")
+        else:
+            # txt / 未知扩展名：按纯文本直读（不误判为损坏）
+            result = _parse_plain(filename, data, opts.clean)
+    except UnsupportedFormatError as e:
+        return ApiResponse(ok=False, data=None, error=str(e))
 
     return ApiResponse(ok=True, data=result)

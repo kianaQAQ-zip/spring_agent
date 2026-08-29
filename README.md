@@ -16,6 +16,22 @@ Vue3 前端（frontend/）            Spring Boot 后端（src/）              
 
 **技术栈**：Spring Boot 3.5.3 · Spring AI 1.0.0 GA · PgVector（PostgreSQL 17）· Apache Tika · 通义 qwen-plus/qwen-turbo/text-embedding-v3 + DeepSeek-V3 · Vue3 + Vite + ElementPlus · FastAPI（doc-processor）
 
+## 支持的文件格式
+
+知识库上传与导出支持以下格式（统一经 doc-processor 处理，损坏/不支持文件返回友好错误）：
+
+| 格式 | 上传解析 | 结构保留 | 导出 |
+|---|---|---|---|
+| TXT | ✅ | 段落 | ✅ |
+| Markdown (.md) | ✅ | 标题/列表/表格/代码块（保留语法标记） | ✅ |
+| PDF | ✅（MinerU OCR → PyMuPDF → Tika 兜底） | 标题/表格/公式/排版块 | ✅ |
+| Word (.docx) | ✅（python-docx） | 标题层级/段落/表格 | ✅ |
+| Excel (.xlsx) | ✅（openpyxl） | 工作表/单元格行列 | ✅ |
+
+- **上传**：`POST /kb/upload` → 解析 → 柔性分块 → 向量入库（doc-processor 未启动时降级 Tika 纯文本兜底）。
+- **导出**：`GET /kb/doc/{docId}/export?format=txt|md|docx|xlsx|pdf`，txt/md 本地直出，docx/xlsx/pdf 经 doc-processor 生成。
+- **doc-processor 导出 API**：`POST /api/v1/export`（`{format, text, blocks?}`），PDF 需系统中文字体（simhei/msyh 等）。
+
 ## 里程碑
 
 M1 脚手架 → M1.5 doc-processor → M2 RAG 入库 → M3 对话+流式 → M4 工具+HITL → M5 引用溯源+重排 → M6 状态机+QueryRewrite → M7 输出护栏+PII → M8a 聊天窗+确认台 → M8b 上传页+源抽屉 → M9 可观测+评估+多租户

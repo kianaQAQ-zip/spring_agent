@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
@@ -108,8 +109,43 @@ public class DocProcessorClient {
         }
     }
 
+    /**
+     * 导出为指定格式（docx/xlsx/pdf，经 doc-processor）。
+     * doc-processor 不可达或业务失败返回 {@code null}（上层转友好错误）。
+     */
+    public ExportResult export(String text, String format) {
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("format", format);
+            body.put("text", text);
+
+            ResponseEntity<byte[]> resp = restClient.post()
+                    .uri("/api/v1/export")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toEntity(byte[].class);
+
+            byte[] bytes = resp.getBody();
+            if (bytes == null) {
+                return null;
+            }
+            MediaType ct = resp.getHeaders().getContentType();
+            if (ct != null && ct.isCompatibleWith(MediaType.APPLICATION_JSON)) {
+                return null;  // doc-processor 返回失败信封（JSON）
+            }
+            return new ExportResult(bytes, ct == null ? "application/octet-stream" : ct.toString());
+        } catch (RestClientException e) {
+            return null;
+        }
+    }
+
     // ---- doc-processor /api/v1/parse 响应契约（§10.2） ----
     public record DocProcessorParseResponse(boolean ok, ParseData data, String error) {
+    }
+
+    // ---- doc-processor /api/v1/export 响应（文件字节 + content-type） ----
+    public record ExportResult(byte[] bytes, String contentType) {
     }
 
     // ---- doc-processor /api/v1/rerank 响应契约（§10.2） ----

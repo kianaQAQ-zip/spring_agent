@@ -8,6 +8,10 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "python-multipart>=0.0.9",
+    # 多格式文档读写（轻量纯 Python）：Word / Excel / PDF 导出
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "fpdf2>=2.7",
 ]
 
 [project.optional-dependencies]

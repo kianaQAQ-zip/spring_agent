@@ -9,6 +9,7 @@ import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -119,5 +120,30 @@ public class KbIngestionService {
                 .build());
         String chunkContent = docs.isEmpty() ? null : docs.get(0).getText();
         return new DocChunk(docId, doc.source(), doc.parsedText(), chunkIndex, chunkContent);
+    }
+
+    /** 多格式导出：txt/md 本地直出；docx/xlsx/pdf 经 doc-processor。失败返回 null。 */
+    public DocExport exportDoc(String docId, String format) {
+        KnowledgeDoc doc = getDoc(docId);
+        if (doc == null || doc.parsedText() == null) {
+            return null;
+        }
+        String text = doc.parsedText();
+        String fmt = (format == null ? "md" : format.trim().toLowerCase());
+        if ("txt".equals(fmt)) {
+            return new DocExport(text.getBytes(StandardCharsets.UTF_8), "text/plain; charset=utf-8", "txt");
+        }
+        if ("md".equals(fmt)) {
+            return new DocExport(text.getBytes(StandardCharsets.UTF_8), "text/markdown; charset=utf-8", "md");
+        }
+        DocProcessorClient.ExportResult r = docProcessorClient.export(text, fmt);
+        if (r == null) {
+            return null;
+        }
+        return new DocExport(r.bytes(), r.contentType(), fmt);
+    }
+
+    /** 导出结果：字节 + content-type + 扩展名。 */
+    public record DocExport(byte[] bytes, String contentType, String ext) {
     }
 }
