@@ -31,6 +31,7 @@ public class ModelConfig {
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(DASHSCOPE_BASE_URL)
                 .apiKey(apiKey)
+                .completionsPath("/chat/completions")
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(api)
@@ -48,6 +49,7 @@ public class ModelConfig {
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(DASHSCOPE_BASE_URL)
                 .apiKey(apiKey)
+                .completionsPath("/chat/completions")
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(api)
@@ -65,6 +67,7 @@ public class ModelConfig {
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(DEEPSEEK_BASE_URL)
                 .apiKey(apiKey)
+                .completionsPath("/chat/completions")
                 .build();
         return OpenAiChatModel.builder()
                 .openAiApi(api)
@@ -81,6 +84,7 @@ public class ModelConfig {
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(DASHSCOPE_BASE_URL)
                 .apiKey(apiKey)
+                .embeddingsPath("/embeddings")
                 .build();
         return new OpenAiEmbeddingModel(
                 api,
