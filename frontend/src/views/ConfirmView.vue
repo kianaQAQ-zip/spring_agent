@@ -9,7 +9,6 @@ const actions = ref([])
 const loading = ref(false)
 let timer = null
 
-// 待确认 + 已过期（置灰）显示为卡片；其余进审计历史
 const activeCards = computed(() =>
   actions.value.filter((a) => a.status === 'pending' || a.status === 'expired'))
 const history = computed(() =>
@@ -54,22 +53,26 @@ function formatResult(result) {
 
 <template>
   <div class="confirm">
-    <div class="toolbar">
-      <span class="label">会话 ID</span>
-      <el-input v-model="store.conversationId" size="small" style="width: 220px"
-                @change="(v) => { store.setConversationId(v); refresh() }" />
-      <el-button size="small" :loading="loading" @click="refresh">刷新</el-button>
-      <el-tag size="small" type="info">2 秒轮询</el-tag>
-    </div>
+    <header class="topbar">
+      <div class="topbar-left">
+        <el-icon :size="16" color="#0066cc"><Tickets /></el-icon>
+        <span class="topbar-title">坐席确认台</span>
+      </div>
+      <div class="topbar-right">
+        <span class="conv-id">会话 {{ store.conversationId.slice(0, 12) }}</span>
+        <el-tag size="small" type="info" effect="plain">2 秒轮询</el-tag>
+        <el-button size="small" :loading="loading" @click="refresh">刷新</el-button>
+      </div>
+    </header>
 
     <div class="body">
-      <section v-if="activeCards.length">
+      <section v-if="activeCards.length" class="section">
         <h3>待确认（{{ activeCards.length }}）</h3>
         <PendingCard v-for="a in activeCards" :key="a.id" :action="a" @changed="refresh" />
       </section>
       <el-empty v-else description="暂无待确认动作" :image-size="80" />
 
-      <section v-if="history.length">
+      <section v-if="history.length" class="section">
         <h3>审计历史</h3>
         <el-table :data="history" size="small" border>
           <el-table-column label="工具" width="130">
@@ -97,8 +100,15 @@ function formatResult(result) {
 
 <style scoped>
 .confirm { display: flex; flex-direction: column; height: 100%; }
-.toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid #ebeef5; }
-.label { font-size: 13px; color: #909399; }
-.body { flex: 1; overflow-y: auto; padding: 16px; }
-h3 { margin: 8px 0 12px; font-size: 15px; color: #303133; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; flex-shrink: 0; border-bottom: 1px solid var(--border-light);
+}
+.topbar-left { display: flex; align-items: center; gap: 8px; }
+.topbar-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.conv-id { font-size: 12px; color: var(--text-tertiary); font-family: monospace; }
+.body { flex: 1; overflow-y: auto; padding: 20px; }
+.section { margin-bottom: 24px; }
+h3 { margin: 8px 0 14px; font-size: 15px; color: var(--text); }
 </style>

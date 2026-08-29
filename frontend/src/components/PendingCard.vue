@@ -75,14 +75,14 @@ function doCancel() {
 </template>
 
 <style scoped>
-.pending-card { margin-bottom: 12px; }
+.pending-card { margin-bottom: 12px; border-radius: var(--radius-md); }
 .pending-card.expired { opacity: 0.55; }
 .card-head { display: flex; align-items: center; gap: 10px; }
-.expired-tag { color: #909399; font-size: 12px; }
-.id { font-family: monospace; color: #909399; font-size: 13px; }
-.time { color: #c0c4cc; font-size: 12px; }
+.expired-tag { color: var(--text-tertiary); font-size: 12px; }
+.id { font-family: monospace; color: var(--text-tertiary); font-size: 13px; }
+.time { color: var(--text-muted); font-size: 12px; }
 .params { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .param-row { display: flex; align-items: center; gap: 10px; }
-.key { width: 90px; font-size: 13px; color: #606266; }
-.ops { display: flex; align-items: center; gap: 8px; }
+.key { width: 90px; font-size: 13px; color: var(--text-secondary); }
+.ops { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 </style>
