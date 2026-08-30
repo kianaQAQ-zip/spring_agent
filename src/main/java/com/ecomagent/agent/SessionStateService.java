@@ -1,5 +1,6 @@
 package com.ecomagent.agent;
 
+import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.TenantContext;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -26,13 +27,16 @@ public class SessionStateService {
     private final ChatModel qwenTurbo;
     private final SessionStateRepository repository;
     private final SessionWriteLock writeLock;
+    private final DegradationFlags degradationFlags;
 
     public SessionStateService(@Qualifier("qwenTurboChatModel") ChatModel qwenTurbo,
                                SessionStateRepository repository,
-                               SessionWriteLock writeLock) {
+                               SessionWriteLock writeLock,
+                               DegradationFlags degradationFlags) {
         this.qwenTurbo = qwenTurbo;
         this.repository = repository;
         this.writeLock = writeLock;
+        this.degradationFlags = degradationFlags;
     }
 
     public SessionState extractState(String conversationId, String userMessage) {
@@ -73,9 +77,12 @@ public class SessionStateService {
             ChatResponse resp = qwenTurbo.call(new Prompt(
                     List.of(new SystemMessage(system), new UserMessage(user))));
             String content = resp.getResult().getOutput().getText();
+            degradationFlags.clear(DegradationFlags.STATE_EXTRACT);
             return converter.convert(content);
         } catch (Exception e) {
-            // LLM 失败/解析失败：保守返回 noChange，不阻塞对话
+            // LLM 失败/解析失败：保守返回 noChange，不阻塞对话。
+            // 但必须标记——否则 intent/orderId 全空、工具永不触发，系统静默退化为检索器。
+            degradationFlags.mark(DegradationFlags.STATE_EXTRACT);
             return new SessionStateDelta(null, null, null, true);
         }
     }

@@ -1,6 +1,9 @@
 package com.ecomagent.agent;
 
+import com.ecomagent.common.DegradationFlags;
+import com.ecomagent.common.GlobalExceptionHandler;
 import com.ecomagent.common.TenantContext;
+import com.ecomagent.rag.Citation;
 import com.ecomagent.rag.CitationValidator;
 import com.ecomagent.rag.RetrievalPipeline;
 import com.ecomagent.rag.RetrievalResult;
@@ -47,6 +50,7 @@ public class ChatService {
     private final QueryRewriteService queryRewriteService;
     private final ContextAssembler contextAssembler;
     private final OutputGuardrailService outputGuardrailService;
+    private final DegradationFlags degradationFlags;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
@@ -58,6 +62,7 @@ public class ChatService {
                        QueryRewriteService queryRewriteService,
                        ContextAssembler contextAssembler,
                        OutputGuardrailService outputGuardrailService,
+                       DegradationFlags degradationFlags,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -71,6 +76,7 @@ public class ChatService {
         this.queryRewriteService = queryRewriteService;
         this.contextAssembler = contextAssembler;
         this.outputGuardrailService = outputGuardrailService;
+        this.degradationFlags = degradationFlags;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
@@ -86,57 +92,84 @@ public class ChatService {
      * 流式回答：先发 {@code event: citations}，再逐 token 以 {@code event: token} 推送。
      */
     public Flux<ServerSentEvent<String>> streamAnswer(String conversationId, String userMessage) {
-        // 1. 信号检测（纯规则，同步）
-        Signal signal = signalDetector.detect(userMessage);
+        try {
+            // 1. 信号检测（纯规则，同步）
+            Signal signal = signalDetector.detect(userMessage);
 
-        // 2. L2 状态提取（qwen-turbo 增量，best-effort）
-        SessionState state = sessionStateService.extractState(conversationId, userMessage);
+            // 2. L2 状态提取（qwen-turbo 增量，best-effort）
+            SessionState state;
+            try {
+                state = sessionStateService.extractState(conversationId, userMessage);
+            } catch (Exception e) {
+                log.warn("状态提取失败（best-effort 跳过）: {}", e.getMessage());
+                state = SessionState.empty(conversationId, TenantContext.get());
+            }
 
-        // 3. 状态机：主动澄清
-        Decision decision = stateMachine.decide(state.intent(), state.orderId(), signal);
-        if (decision.needsClarification()) {
-            return clarificationFlux(decision.reason());
+            // 3. 状态机：主动澄清
+            Decision decision = stateMachine.decide(state.intent(), state.orderId(), signal);
+            if (decision.needsClarification()) {
+                return clarificationFlux(decision.reason());
+            }
+
+            // 4. QueryRewrite（L1 感知改写，仅改检索句；best-effort）
+            String rewritten;
+            try {
+                rewritten = queryRewriteService.rewrite(conversationId, userMessage);
+            } catch (Exception e) {
+                log.warn("QueryRewrite 失败（best-effort 跳过）: {}", e.getMessage());
+                rewritten = userMessage;
+            }
+
+            // 5. 混合检索 → 重排 → MMR → 编号
+            RetrievalResult rr = retrievalPipeline.retrieve(rewritten, TenantContext.get());
+
+            // 6. 上下文装配（token 预算 + 状态分区）
+            String systemPrompt = contextAssembler.assemble(state, rr.documents());
+
+            // 降级信号随 citations 一起下发：同步阶段被吞掉的失败（状态提取/查询改写）
+            // 必须让前端可见——否则用户以为在跟完整 Agent 聊，实际工具调用已经全废。
+            ServerSentEvent<String> citationsEvent = ServerSentEvent.<String>builder()
+                    .event("citations")
+                    .data(toJson(new CitationsPayload(rr.citations(), degradationFlags.degraded())))
+                    .build();
+
+            StringBuilder acc = new StringBuilder();
+            Flux<ServerSentEvent<String>> textEvents = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userMessage)
+                    .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                    .toolContext(Map.of("conversationId", conversationId))
+                    .stream()
+                    .content()
+                    .doOnNext(acc::append)
+                    // M7：PII 输出脱敏（§5 输出缝），逐 token 掩码后推前端
+                    .map(token -> ServerSentEvent.<String>builder()
+                            .event("token")
+                            .data(outputGuardrailService.maskOutput(token))
+                            .build());
+
+            return Flux.concat(Flux.just(citationsEvent), textEvents)
+                    .doOnError(e -> {
+                        degradationFlags.mark(DegradationFlags.CHAT);
+                        persistTruncated(conversationId, acc.toString());
+                    })
+                    .doOnComplete(() -> {
+                        degradationFlags.clear(DegradationFlags.CHAT);
+                        checkCitations(acc.toString(), rr.citations().size());
+                        runGuardrail(acc.toString(), contextOf(rr));
+                    });
+        } catch (Exception e) {
+            // 同步阶段异常（如检索失败）→ 以 SSE error 事件返回
+            return GlobalExceptionHandler.toSseError(e);
         }
-
-        // 4. QueryRewrite（L1 感知改写，仅改检索句）
-        String rewritten = queryRewriteService.rewrite(conversationId, userMessage);
-
-        // 5. 混合检索 → 重排 → MMR → 编号
-        RetrievalResult rr = retrievalPipeline.retrieve(rewritten, TenantContext.get());
-
-        // 6. 上下文装配（token 预算 + 状态分区）
-        String systemPrompt = contextAssembler.assemble(state, rr.documents());
-
-        ServerSentEvent<String> citationsEvent = ServerSentEvent.<String>builder()
-                .event("citations")
-                .data(toJson(rr.citations()))
-                .build();
-
-        StringBuilder acc = new StringBuilder();
-        Flux<ServerSentEvent<String>> textEvents = chatClient.prompt()
-                .system(systemPrompt)
-                .user(userMessage)
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
-                .toolContext(Map.of("conversationId", conversationId))
-                .stream()
-                .content()
-                .doOnNext(acc::append)
-                // M7：PII 输出脱敏（§5 输出缝），逐 token 掩码后推前端
-                .map(token -> ServerSentEvent.<String>builder()
-                        .event("token")
-                        .data(outputGuardrailService.maskOutput(token))
-                        .build());
-
-        return Flux.concat(Flux.just(citationsEvent), textEvents)
-                .doOnError(e -> persistTruncated(conversationId, acc.toString()))
-                .doOnComplete(() -> {
-                    checkCitations(acc.toString(), rr.citations().size());
-                    runGuardrail(acc.toString(), contextOf(rr));
-                });
     }
 
     private Flux<ServerSentEvent<String>> clarificationFlux(String reason) {
         return Flux.just(ServerSentEvent.<String>builder().event("token").data(reason).build());
+    }
+
+    /** citations 事件载荷：引用列表 + 当前降级中的能力（供前端显示"基础问答模式"）。 */
+    public record CitationsPayload(List<Citation> citations, List<String> degraded) {
     }
 
     /** §5 后处理：校验 [n] 引用不越界（防模型编造引用），越界仅告警不阻断。 */

@@ -1,6 +1,7 @@
 package com.ecomagent.api;
 
 import com.ecomagent.agent.ChatService;
+import com.ecomagent.common.DegradationFlags;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,8 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import reactor.core.publisher.Flux;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -36,12 +39,30 @@ class ChatControllerTest {
     @MockBean
     private ChatService chatService;
 
+    @MockBean
+    private DegradationFlags degradationFlags;
+
     @Test
     void healthUp() throws Exception {
         when(chatService.getChatClient()).thenReturn(mock(ChatClient.class));
+        when(degradationFlags.degraded()).thenReturn(List.of());
         mockMvc.perform(get("/chat/health"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("UP"));
+                .andExpect(jsonPath("$.data.status").value("UP"))
+                .andExpect(jsonPath("$.data.degradedCount").value(0));
+    }
+
+    /** 静默失效要能被 health 看见：降级中时 degraded 列表非空。 */
+    @Test
+    void healthReportsDegradation() throws Exception {
+        when(chatService.getChatClient()).thenReturn(mock(ChatClient.class));
+        when(degradationFlags.degraded())
+                .thenReturn(List.of(DegradationFlags.STATE_EXTRACT, DegradationFlags.QUERY_REWRITE));
+
+        mockMvc.perform(get("/chat/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.degradedCount").value(2))
+                .andExpect(jsonPath("$.data.degraded[0]").value("state-extract"));
     }
 
     @Test

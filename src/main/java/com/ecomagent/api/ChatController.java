@@ -2,6 +2,8 @@ package com.ecomagent.api;
 
 import com.ecomagent.agent.ChatService;
 import com.ecomagent.common.ApiResponse;
+import com.ecomagent.common.DegradationFlags;
+import com.ecomagent.common.GlobalExceptionHandler;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,23 +24,36 @@ import java.util.Map;
 public class ChatController {
 
     private final ChatService chatService;
+    private final DegradationFlags degradationFlags;
 
-    public ChatController(ChatService chatService) {
+    public ChatController(ChatService chatService, DegradationFlags degradationFlags) {
         this.chatService = chatService;
+        this.degradationFlags = degradationFlags;
     }
 
+    /**
+     * 健康检查。
+     *
+     * <p>只判断 {@code chatClient != null} 的话永远是 UP——额度耗尽、key 失效、网络中断
+     * 全都看不出来。这里额外带上当前降级中的能力列表，让"Agent 已静默退化为检索器"
+     * 这类失效能被监控到。
+     */
     @GetMapping("/health")
     public ApiResponse<Map<String, Object>> health() {
         ChatClient client = chatService.getChatClient();
         boolean ready = client != null;
+        List<String> degraded = degradationFlags.degraded();
         return ApiResponse.ok(Map.of(
                 "status", ready ? "UP" : "DOWN",
-                "chatClient", ready ? "initialized" : "missing"
+                "chatClient", ready ? "initialized" : "missing",
+                "degraded", degraded,
+                "degradedCount", degraded.size()
         ));
     }
 
     /**
-+     *
+     * 流式对话。
+     *
      * @param message        用户消息
      * @param conversationId 会话 ID（记忆窗口键，默认 "default"）
      */
@@ -45,6 +61,7 @@ public class ChatController {
     public Flux<ServerSentEvent<String>> stream(
             @RequestParam("message") String message,
             @RequestParam(value = "conversationId", defaultValue = "default") String conversationId) {
-        return chatService.streamAnswer(conversationId, message);
+        return chatService.streamAnswer(conversationId, message)
+                .onErrorResume(GlobalExceptionHandler::toSseError);
     }
 }

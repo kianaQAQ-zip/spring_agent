@@ -14,6 +14,19 @@ const showCitations = ref(false)
 const listRef = ref(null)
 const esRef = ref(null)
 
+// 后端静默降级的能力（state-extract / query-rewrite / guardrail / chat / embedding）。
+// 非空 = 智能体已部分失效，界面必须如实告知——不能让用户以为还在跟完整 Agent 聊。
+const degraded = ref([])
+const showDegraded = ref(false)
+
+const DEGRADATION_LABELS = {
+  'state-extract': '订单意图识别（查单、退款等工具不可用）',
+  'query-rewrite': '查询理解优化（检索命中率下降）',
+  guardrail: '回答事实校验（护栏已关闭）',
+  chat: '对话生成',
+  embedding: '知识库向量检索'
+}
+
 // 引用 popover
 const popover = ref(null)         // { citation, x, y }
 // 导出菜单
@@ -57,7 +70,12 @@ function send(text) {
       ;(list || []).forEach((c) => map.set(c.index, c))
       allCitations.value = Array.from(map.values()).sort((a, b) => a.index - b.index)
     },
+    onDegraded: (list) => { degraded.value = list || [] },
     onToken: (token) => { assistantMsg.content += token; scrollToBottom() },
+    onError: (msg) => {
+      assistantMsg.content = msg || '服务暂时不可用'
+      ElMessage.error(msg || '服务暂时不可用')
+    },
     onDone: () => {
       assistantMsg.streaming = false
       streaming.value = false
@@ -72,6 +90,7 @@ function newConversation() {
   messages.value = []
   allCitations.value = []
   showCitations.value = false
+  degraded.value = []
 }
 
 // 从内容里提取引用徽章（去重、保序）
@@ -173,6 +192,27 @@ const hasMessages = computed(() => messages.value.length > 0)
         <div class="topbar-left">
           <el-icon :size="16" color="#0066cc"><ChatDotRound /></el-icon>
           <span class="topbar-title">客户聊天窗</span>
+
+          <div
+            v-if="degraded.length"
+            class="degraded-wrap"
+            @mouseenter="showDegraded = true"
+            @mouseleave="showDegraded = false"
+          >
+            <button class="degraded-chip" data-degraded type="button">
+              <span class="degraded-dot"></span>
+              基础问答模式
+            </button>
+            <transition name="fade">
+              <div v-if="showDegraded" class="degraded-tip" data-degraded>
+                <p class="tip-title">以下智能能力暂时不可用</p>
+                <ul>
+                  <li v-for="d in degraded" :key="d">{{ DEGRADATION_LABELS[d] || d }}</li>
+                </ul>
+                <p class="tip-foot">当前仅提供知识库检索问答，回答可能不够精准。</p>
+              </div>
+            </transition>
+          </div>
         </div>
         <button class="topbar-btn" title="新会话" @click="newConversation">
           <el-icon :size="16"><Plus /></el-icon>
@@ -348,6 +388,36 @@ const hasMessages = computed(() => messages.value.length > 0)
   transition: background 150ms ease, color 150ms ease;
 }
 .topbar-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+/* 降级提示：琥珀色 pill，安静不打扰，hover 才展开说明 */
+.degraded-wrap { position: relative; display: inline-flex; }
+.degraded-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+  color: var(--warning);
+  font-size: 12px; cursor: help; font-family: inherit; line-height: 1.5;
+  animation: chipIn 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background 150ms ease;
+}
+.degraded-chip:hover { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.degraded-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--warning); flex-shrink: 0; }
+@keyframes chipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+.degraded-tip {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 20;
+  width: 300px; padding: 12px 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow-md);
+}
+.tip-title { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--text); }
+.degraded-tip ul { margin: 0 0 8px; padding-left: 16px; }
+.degraded-tip li { font-size: 12px; line-height: 1.7; color: var(--text-secondary); }
+.tip-foot { margin: 0; font-size: 11px; line-height: 1.6; color: var(--text-tertiary); }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 160ms ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .list { flex: 1; overflow-y: auto; padding: 24px 20px; }
 

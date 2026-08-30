@@ -1,5 +1,6 @@
 package com.ecomagent.agent;
 
+import com.ecomagent.common.DegradationFlags;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -33,7 +34,7 @@ class QueryRewriteServiceTest {
 
     @Test
     void rewritesAndCaches() {
-        QueryRewriteService service = new QueryRewriteService(qwenTurbo, chatMemory);
+        QueryRewriteService service = new QueryRewriteService(qwenTurbo, chatMemory, new DegradationFlags());
         when(chatMemory.get(anyString())).thenReturn(List.of());
         when(qwenTurbo.call(any(Prompt.class))).thenReturn(new ChatResponse(List.of(
                 new Generation(new AssistantMessage("ORD-1001 退款政策")))));

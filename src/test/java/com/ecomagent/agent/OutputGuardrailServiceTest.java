@@ -1,5 +1,6 @@
 package com.ecomagent.agent;
 
+import com.ecomagent.common.DegradationFlags;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -28,7 +29,7 @@ class OutputGuardrailServiceTest {
 
     @Test
     void masksPiiInOutput() {
-        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo);
+        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo, new DegradationFlags());
         String masked = service.maskOutput("您的手机号是13812348000");
         assertTrue(masked.contains("****"), "输出应脱敏");
         assertFalse(masked.contains("13812348000"));
@@ -36,19 +37,19 @@ class OutputGuardrailServiceTest {
 
     @Test
     void strongAssertionWithoutCitationIsOutOfScope() {
-        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo);
+        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo, new DegradationFlags());
         assertTrue(service.isOutOfScope("这个绝对可以退，我确定没问题"));
     }
 
     @Test
     void citedAnswerIsNotOutOfScope() {
-        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo);
+        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo, new DegradationFlags());
         assertFalse(service.isOutOfScope("我肯定这符合退货政策[1]"));
     }
 
     @Test
     void judgeFailsOnHallucination() {
-        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo);
+        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo, new DegradationFlags());
         when(qwenTurbo.call(any(Prompt.class))).thenReturn(new ChatResponse(List.of(
                 new Generation(new AssistantMessage("{\"verdict\":\"FAIL\",\"reason\":\"回答与知识库不符\"}")))));
 
@@ -59,7 +60,7 @@ class OutputGuardrailServiceTest {
 
     @Test
     void judgePassesOnGroundedAnswer() {
-        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo);
+        OutputGuardrailService service = new OutputGuardrailService(qwenTurbo, new DegradationFlags());
         when(qwenTurbo.call(any(Prompt.class))).thenReturn(new ChatResponse(List.of(
                 new Generation(new AssistantMessage("{\"verdict\":\"PASS\",\"reason\":\"\"}")))));
 

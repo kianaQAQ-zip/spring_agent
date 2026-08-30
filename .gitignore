@@ -35,6 +35,11 @@ __pycache__/
 doc-processor/.venv/
 doc-processor/.uv-cache/
 
+# === 前端 ===
+node_modules/
+.npm-cache/
+frontend/dist/
+
 # === Agent 内部工作记忆（非项目代码） ===
 .workbuddy/
 

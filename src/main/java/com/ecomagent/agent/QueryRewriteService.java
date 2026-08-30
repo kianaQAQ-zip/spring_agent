@@ -1,5 +1,6 @@
 package com.ecomagent.agent;
 
+import com.ecomagent.common.DegradationFlags;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -32,11 +33,14 @@ public class QueryRewriteService {
     private final ChatModel qwenTurbo;
     private final ChatMemory chatMemory;
     private final Cache<String, String> cache;
+    private final DegradationFlags degradationFlags;
 
     public QueryRewriteService(@Qualifier("qwenTurboChatModel") ChatModel qwenTurbo,
-                               ChatMemory chatMemory) {
+                               ChatMemory chatMemory,
+                               DegradationFlags degradationFlags) {
         this.qwenTurbo = qwenTurbo;
         this.chatMemory = chatMemory;
+        this.degradationFlags = degradationFlags;
         this.cache = Caffeine.newBuilder()
                 .maximumSize(1000)
                 .expireAfterWrite(Duration.ofMinutes(10))
@@ -70,9 +74,12 @@ public class QueryRewriteService {
             ChatResponse resp = qwenTurbo.call(new Prompt(
                     List.of(new SystemMessage(system), new UserMessage(user))));
             String rewritten = resp.getResult().getOutput().getText().trim();
+            degradationFlags.clear(DegradationFlags.QUERY_REWRITE);
             return rewritten.isBlank() ? query : rewritten;
         } catch (Exception e) {
-            // 改写失败回退原查询，不阻断检索
+            // 改写失败回退原查询，不阻断检索。
+            // 标记降级：口语原句直接检索会拉低 RAG 命中率，这个退化要对前端可见。
+            degradationFlags.mark(DegradationFlags.QUERY_REWRITE);
             return query;
         }
     }

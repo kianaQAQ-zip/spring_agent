@@ -1,5 +1,6 @@
 package com.ecomagent.agent;
 
+import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.PiiMaskUtil;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
@@ -34,9 +35,12 @@ public class OutputGuardrailService {
     private static final String FALLBACK = "抱歉，这个问题我暂时无法给出可靠答案，已为您转接人工客服。";
 
     private final ChatModel qwenTurbo;
+    private final DegradationFlags degradationFlags;
 
-    public OutputGuardrailService(@Qualifier("qwenTurboChatModel") ChatModel qwenTurbo) {
+    public OutputGuardrailService(@Qualifier("qwenTurboChatModel") ChatModel qwenTurbo,
+                                  DegradationFlags degradationFlags) {
         this.qwenTurbo = qwenTurbo;
+        this.degradationFlags = degradationFlags;
     }
 
     /** PII 输出脱敏（§5 输出缝） */
@@ -72,9 +76,11 @@ public class OutputGuardrailService {
                     List.of(new SystemMessage(system), new UserMessage(user))));
             JudgeVerdict v = converter.convert(resp.getResult().getOutput().getText());
             String verdict = "FAIL".equalsIgnoreCase(v.verdict()) ? "FAIL" : "PASS";
+            degradationFlags.clear(DegradationFlags.GUARDRAIL);
             return new GuardrailResult(verdict, v.reason());
         } catch (Exception e) {
-            // 裁判不可用 → 放行，不阻断主流程
+            // 裁判不可用 → 放行，不阻断主流程。标记降级：护栏已失效，编造回答不会被拦下。
+            degradationFlags.mark(DegradationFlags.GUARDRAIL);
             log.warn("guardrail judge skipped: {}", e.getMessage());
             return new GuardrailResult("PASS", null);
         }

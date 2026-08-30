@@ -15,7 +15,7 @@ public class CostCalculator {
 
     // 每百万 token 价格（元）：[输入价, 输出价]
     private static final Map<String, double[]> PRICE_PER_MILLION = Map.of(
-            "qwen-plus", new double[]{0.8, 2.0},
+            "glm-5.2", new double[]{0.8, 2.0},
             "qwen-turbo", new double[]{0.3, 0.6});
 
     public double estimate(String model, int promptTokens, int completionTokens) {

@@ -6,7 +6,6 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 
 /**
  * knowledge_doc 表访问（JDBC，无 JPA 依赖）。
@@ -24,10 +23,12 @@ public class KnowledgeDocRepository {
     }
 
     public void save(KnowledgeDoc d) {
+        // created_at 由 DEFAULT now() 自动填充：PG JDBC 42.7.7 的 setObject() 无法推断 Instant 的 SQL 类型，
+        // 显式传参会报 "Can't infer the SQL type to use for an instance of java.time.Instant"。
         jdbcTemplate.update(
-                "INSERT INTO knowledge_doc (id, doc_id, tenant_id, source, chunk_count, parsed_text, created_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                d.id(), d.docId(), d.tenantId(), d.source(), d.chunkCount(), d.parsedText(), Instant.now());
+                "INSERT INTO knowledge_doc (id, doc_id, tenant_id, source, chunk_count, parsed_text) "
+                        + "VALUES (?, ?, ?, ?, ?, ?)",
+                d.id(), d.docId(), d.tenantId(), d.source(), d.chunkCount(), d.parsedText());
     }
 
     public KnowledgeDoc findByDocId(String docId) {
