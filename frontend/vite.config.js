@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// 前端开发代理：/chat /kb /confirm /actuator 转发到后端 Spring Boot（8080）
+// 前端开发代理：/chat /kb /confirm /actuator /stats /conversations /eval /export 转发到后端（8080）
 export default defineConfig({
   plugins: [vue()],
   server: {
@@ -10,7 +10,11 @@ export default defineConfig({
       '/chat': { target: 'http://localhost:8080', changeOrigin: true },
       '/kb': { target: 'http://localhost:8080', changeOrigin: true },
       '/confirm': { target: 'http://localhost:8080', changeOrigin: true },
-      '/actuator': { target: 'http://localhost:8080', changeOrigin: true }
+      '/actuator': { target: 'http://localhost:8080', changeOrigin: true },
+      '/stats': { target: 'http://localhost:8080', changeOrigin: true },
+      '/conversations': { target: 'http://localhost:8080', changeOrigin: true },
+      '/eval': { target: 'http://localhost:8080', changeOrigin: true },
+      '/export': { target: 'http://localhost:8080', changeOrigin: true }
     }
   }
 })

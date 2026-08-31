@@ -4,10 +4,13 @@ import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.GlobalExceptionHandler;
 import com.ecomagent.common.TenantContext;
 import com.ecomagent.conversation.ConversationPersistenceService;
+import com.ecomagent.eval.CostCalculator;
+import com.ecomagent.eval.RagEvalService;
 import com.ecomagent.rag.Citation;
 import com.ecomagent.rag.CitationValidator;
 import com.ecomagent.rag.RetrievalPipeline;
 import com.ecomagent.rag.RetrievalResult;
+import com.ecomagent.rag.TokenUtils;
 import com.ecomagent.tools.AddressChangeTool;
 import com.ecomagent.tools.CouponTool;
 import com.ecomagent.tools.OrderQueryTool;
@@ -53,6 +56,8 @@ public class ChatService {
     private final OutputGuardrailService outputGuardrailService;
     private final DegradationFlags degradationFlags;
     private final ConversationPersistenceService conversationPersistence;
+    private final RagEvalService ragEvalService;
+    private final CostCalculator costCalculator;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
@@ -66,6 +71,8 @@ public class ChatService {
                        OutputGuardrailService outputGuardrailService,
                        DegradationFlags degradationFlags,
                        ConversationPersistenceService conversationPersistence,
+                       RagEvalService ragEvalService,
+                       CostCalculator costCalculator,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -81,6 +88,8 @@ public class ChatService {
         this.outputGuardrailService = outputGuardrailService;
         this.degradationFlags = degradationFlags;
         this.conversationPersistence = conversationPersistence;
+        this.ragEvalService = ragEvalService;
+        this.costCalculator = costCalculator;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
@@ -167,10 +176,31 @@ public class ChatService {
                         conversationPersistence.recordAssistantMessage(conversationId, acc.toString());
                         checkCitations(acc.toString(), rr.citations().size());
                         runGuardrail(acc.toString(), contextOf(rr));
+                        recordRagEval(conversationId, userMessage, rr, systemPrompt, acc.toString());
                     });
         } catch (Exception e) {
             // 同步阶段异常（如检索失败）→ 以 SSE error 事件返回
             return GlobalExceptionHandler.toSseError(e);
+        }
+    }
+
+    /**
+     * RAG 线上指标采集（§9 评估台）：命中率 / 引用准确率 / 成本，全由真实流量产生。
+     * 旁路调用——采集失败不影响对话。
+     */
+    private void recordRagEval(String conversationId, String query, RetrievalResult rr,
+                               String systemPrompt, String answer) {
+        try {
+            int docCount = rr.documents().size();
+            int citationCount = CitationValidator.extractIndices(answer).size();
+            int outOfRange = CitationValidator.outOfRange(answer, rr.citations().size()).size();
+            int answerTokens = TokenUtils.estimateTokens(answer);
+            int promptTokens = TokenUtils.estimateTokens(systemPrompt) + TokenUtils.estimateTokens(query);
+            double cost = costCalculator.estimate("glm-5.2", promptTokens, answerTokens);
+            ragEvalService.record(conversationId, query, docCount, citationCount,
+                    outOfRange, answerTokens, cost);
+        } catch (Exception e) {
+            log.warn("RAG 评估采集失败: {}", e.getMessage());
         }
     }
 

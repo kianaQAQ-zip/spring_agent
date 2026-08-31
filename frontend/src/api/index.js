@@ -17,6 +17,40 @@ export function health() {
   return request('/chat/health')
 }
 
+// ---- 统计看板 ----
+export function statsOverview() { return request('/stats/overview') }
+export function statsTrend(days = 14) { return request(`/stats/trend?days=${days}`) }
+export function statsPlatform() { return request('/stats/platform') }
+export function statsHourly() { return request('/stats/hourly') }
+export function statsIntent() { return request('/stats/intent') }
+
+// ---- 历史会话 ----
+export function listConversations(params = {}) {
+  const q = new URLSearchParams()
+  if (params.platform) q.set('platform', params.platform)
+  if (params.keyword) q.set('keyword', params.keyword)
+  if (params.from) q.set('from', params.from)
+  if (params.to) q.set('to', params.to)
+  q.set('page', params.page || 1)
+  q.set('size', params.size || 20)
+  return request(`/conversations?${q.toString()}`)
+}
+export function conversationDetail(id) { return request(`/conversations/${encodeURIComponent(id)}`) }
+
+// ---- RAG 评估台 ----
+export function evalSummary() { return request('/eval/summary') }
+export function evalTrend(days = 14) { return request(`/eval/trend?days=${days}`) }
+
+// ---- 报表导出 ----
+export function exportConversations(params = {}) {
+  const q = new URLSearchParams()
+  if (params.platform) q.set('platform', params.platform)
+  if (params.keyword) q.set('keyword', params.keyword)
+  if (params.from) q.set('from', params.from)
+  if (params.to) q.set('to', params.to)
+  return `/export/conversations.csv?${q.toString()}`
+}
+
 // ---- 知识库 ----
 export function uploadDoc(file) {
   const form = new FormData()

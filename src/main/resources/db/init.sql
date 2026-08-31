@@ -147,3 +147,22 @@ CREATE INDEX IF NOT EXISTS idx_msg_platform_time  ON message (tenant_id, platfor
 -- 会话幂等：同租户下 conversation_id 唯一，供 upsert 的 ON CONFLICT 使用
 CREATE UNIQUE INDEX IF NOT EXISTS idx_conv_unique
     ON conversation (tenant_id, conversation_id);
+
+-- ------------------------------------------------------------
+-- 10) RAG 评估快照（§9 线上指标：命中率 / 引用准确率 / 成本，全部真实对话产生）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rag_eval (
+    id              VARCHAR(64) PRIMARY KEY,
+    conversation_id VARCHAR(64) NOT NULL,
+    tenant_id       VARCHAR(64) NOT NULL DEFAULT 'default',
+    platform        VARCHAR(32) NOT NULL DEFAULT 'unknown',
+    query           TEXT,
+    hit             BOOLEAN NOT NULL,
+    doc_count       INT NOT NULL DEFAULT 0,
+    citation_count  INT NOT NULL DEFAULT 0,
+    out_of_range    INT NOT NULL DEFAULT 0,
+    answer_tokens   INT NOT NULL DEFAULT 0,
+    cost            NUMERIC(12,6) NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_rag_eval_time ON rag_eval (tenant_id, created_at);
