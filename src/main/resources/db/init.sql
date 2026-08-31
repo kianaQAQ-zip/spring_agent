@@ -93,3 +93,57 @@ CREATE TABLE IF NOT EXISTS knowledge_doc (
     parsed_text  TEXT,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ------------------------------------------------------------
+-- 7) 订单主表（真实数据源）
+--    业务前提：单商家多平台 —— tenant 固定 default，platform 是独立维度。
+--    一张订单只属于一个平台；统计时按 (tenant_id, platform, created_at) 聚合。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS orders (
+    id           VARCHAR(64) PRIMARY KEY,
+    order_id     VARCHAR(64) NOT NULL,
+    tenant_id    VARCHAR(64) NOT NULL DEFAULT 'default',
+    platform     VARCHAR(32) NOT NULL DEFAULT 'unknown',
+    buyer_name   VARCHAR(64),
+    buyer_phone  VARCHAR(32),
+    status       VARCHAR(32) NOT NULL,
+    amount       NUMERIC(10,2) NOT NULL DEFAULT 0,
+    item_title   VARCHAR(255),
+    quantity     INT NOT NULL DEFAULT 1,
+    address      TEXT,
+    carrier      VARCHAR(64),
+    tracking_no  VARCHAR(64),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, order_id)
+);
+CREATE INDEX IF NOT EXISTS idx_orders_platform_time
+    ON orders (tenant_id, platform, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_status
+    ON orders (tenant_id, status);
+
+-- ------------------------------------------------------------
+-- 8) 物流轨迹（一条订单多条，按 seq 倒序取最新）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS order_trace (
+    id          VARCHAR(64) PRIMARY KEY,
+    order_id    VARCHAR(64) NOT NULL,
+    tenant_id   VARCHAR(64) NOT NULL DEFAULT 'default',
+    platform    VARCHAR(32) NOT NULL DEFAULT 'unknown',
+    seq         INT NOT NULL DEFAULT 0,
+    happened_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    node        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trace_order ON order_trace (tenant_id, order_id, seq DESC);
+
+-- ------------------------------------------------------------
+-- 9) 会话 / 消息补齐平台维度（Q2 人工标注 + Q3 单商家多平台）
+--    索引服务后续按「平台 + 时间」聚合的统计查询。
+-- ------------------------------------------------------------
+ALTER TABLE conversation ADD COLUMN IF NOT EXISTS platform VARCHAR(32) NOT NULL DEFAULT 'unknown';
+ALTER TABLE message      ADD COLUMN IF NOT EXISTS platform VARCHAR(32) NOT NULL DEFAULT 'unknown';
+CREATE INDEX IF NOT EXISTS idx_conv_platform_time ON conversation (tenant_id, platform, created_at);
+CREATE INDEX IF NOT EXISTS idx_msg_platform_time  ON message (tenant_id, platform, created_at);
+-- 会话幂等：同租户下 conversation_id 唯一，供 upsert 的 ON CONFLICT 使用
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conv_unique
+    ON conversation (tenant_id, conversation_id);

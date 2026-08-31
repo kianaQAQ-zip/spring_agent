@@ -54,8 +54,9 @@ export function getDocChunk(docId, chunkIndex) {
 // ---- 客户聊天 SSE ----
 // 后端契约：先 event: citations（{citations, degraded}），再 event: token，失败时 event: error
 // degraded 非空 = 部分能力已静默失效（状态提取/查询改写/护栏），前端需如实告知用户
-export function streamChat(conversationId, message, { onCitations, onDegraded, onToken, onError, onDone }) {
-  const url = `/chat/stream?conversationId=${encodeURIComponent(conversationId)}&message=${encodeURIComponent(message)}`
+export function streamChat(conversationId, message, { platform, onCitations, onDegraded, onToken, onError, onDone }) {
+  const p = encodeURIComponent(platform || 'unknown')
+  const url = `/chat/stream?conversationId=${encodeURIComponent(conversationId)}&message=${encodeURIComponent(message)}&platform=${p}`
   const es = new EventSource(url)
   es.addEventListener('citations', (e) => {
     try {

@@ -3,6 +3,7 @@ package com.ecomagent.agent;
 import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.GlobalExceptionHandler;
 import com.ecomagent.common.TenantContext;
+import com.ecomagent.conversation.ConversationPersistenceService;
 import com.ecomagent.rag.Citation;
 import com.ecomagent.rag.CitationValidator;
 import com.ecomagent.rag.RetrievalPipeline;
@@ -51,6 +52,7 @@ public class ChatService {
     private final ContextAssembler contextAssembler;
     private final OutputGuardrailService outputGuardrailService;
     private final DegradationFlags degradationFlags;
+    private final ConversationPersistenceService conversationPersistence;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
@@ -63,6 +65,7 @@ public class ChatService {
                        ContextAssembler contextAssembler,
                        OutputGuardrailService outputGuardrailService,
                        DegradationFlags degradationFlags,
+                       ConversationPersistenceService conversationPersistence,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -77,6 +80,7 @@ public class ChatService {
         this.contextAssembler = contextAssembler;
         this.outputGuardrailService = outputGuardrailService;
         this.degradationFlags = degradationFlags;
+        this.conversationPersistence = conversationPersistence;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
@@ -92,6 +96,8 @@ public class ChatService {
      * 流式回答：先发 {@code event: citations}，再逐 token 以 {@code event: token} 推送。
      */
     public Flux<ServerSentEvent<String>> streamAnswer(String conversationId, String userMessage) {
+        // 0. 用户消息进入即落库——即使后续流式失败，也保留下"用户问了什么"
+        conversationPersistence.recordUserMessage(conversationId, userMessage);
         try {
             // 1. 信号检测（纯规则，同步）
             Signal signal = signalDetector.detect(userMessage);
@@ -151,10 +157,14 @@ public class ChatService {
             return Flux.concat(Flux.just(citationsEvent), textEvents)
                     .doOnError(e -> {
                         degradationFlags.mark(DegradationFlags.CHAT);
+                        // 失败也落库（截断版），保证历史会话不丢轮
+                        conversationPersistence.recordAssistantMessage(conversationId,
+                                acc.isEmpty() ? "[truncated: stream interrupted]" : acc + " [truncated]");
                         persistTruncated(conversationId, acc.toString());
                     })
                     .doOnComplete(() -> {
                         degradationFlags.clear(DegradationFlags.CHAT);
+                        conversationPersistence.recordAssistantMessage(conversationId, acc.toString());
                         checkCitations(acc.toString(), rr.citations().size());
                         runGuardrail(acc.toString(), contextOf(rr));
                     });

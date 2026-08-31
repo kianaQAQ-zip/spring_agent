@@ -1,24 +1,24 @@
 package com.ecomagent.config;
 
-import com.ecomagent.common.TenantInterceptor;
+import com.ecomagent.common.ContextInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Web 配置（§9 多租户接缝）：注册 {@link TenantInterceptor} 到所有路径。
+ * Web 配置（§9 多租户 + 多渠道接缝）：注册 {@link ContextInterceptor} 到所有路径。
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    private final TenantInterceptor tenantInterceptor;
+    private final ContextInterceptor contextInterceptor;
 
-    public WebConfig(TenantInterceptor tenantInterceptor) {
-        this.tenantInterceptor = tenantInterceptor;
+    public WebConfig(ContextInterceptor contextInterceptor) {
+        this.contextInterceptor = contextInterceptor;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(tenantInterceptor).addPathPatterns("/**");
+        registry.addInterceptor(contextInterceptor).addPathPatterns("/**");
     }
 }

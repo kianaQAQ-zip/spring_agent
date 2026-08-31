@@ -32,6 +32,8 @@ public class DegradationFlags {
     public static final String CHAT = "chat";
     /** Embedding 不可用 → 知识库无法入库，检索退化 */
     public static final String EMBEDDING = "embedding";
+    /** 会话落库失败 → 历史会话/统计/导出会丢数据（静默失效的高危项） */
+    public static final String PERSISTENCE = "persistence";
 
     private static final Duration TTL = Duration.ofMinutes(5);
 

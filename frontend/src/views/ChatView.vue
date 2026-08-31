@@ -24,8 +24,22 @@ const DEGRADATION_LABELS = {
   'query-rewrite': '查询理解优化（检索命中率下降）',
   guardrail: '回答事实校验（护栏已关闭）',
   chat: '对话生成',
-  embedding: '知识库向量检索'
+  embedding: '知识库向量检索',
+  persistence: '会话落库（历史记录可能丢失）'
 }
+
+// 平台维度（Q2 人工标注）：客服在对话前选定，随会话落库，供按平台统计
+const PLATFORMS = [
+  { code: 'taobao', label: '淘宝' },
+  { code: 'jd', label: '京东' },
+  { code: 'pdd', label: '拼多多' },
+  { code: 'douyin', label: '抖音' },
+  { code: 'kuaishou', label: '快手' },
+  { code: 'wechat', label: '微信小店' },
+  { code: 'official', label: '官方商城' },
+  { code: 'unknown', label: '未标注' }
+]
+const platform = ref(localStorage.getItem('ecom.platform') || 'unknown')
 
 // 引用 popover
 const popover = ref(null)         // { citation, x, y }
@@ -64,6 +78,7 @@ function send(text) {
   scrollToBottom()
 
   esRef.value = streamChat(store.conversationId, q, {
+    platform: platform.value,
     onCitations: (list) => {
       assistantMsg.citations = list
       const map = new Map(allCitations.value.map((c) => [c.index, c]))
@@ -93,6 +108,10 @@ function newConversation() {
   degraded.value = []
 }
 
+function changePlatform(code) {
+  platform.value = code
+  localStorage.setItem('ecom.platform', code)
+}
 // 从内容里提取引用徽章（去重、保序）
 function citationBadges(content, citations) {
   const map = new Map()
@@ -192,6 +211,15 @@ const hasMessages = computed(() => messages.value.length > 0)
         <div class="topbar-left">
           <el-icon :size="16" color="#0066cc"><ChatDotRound /></el-icon>
           <span class="topbar-title">客户聊天窗</span>
+
+          <el-select
+            v-model="platform"
+            class="platform-select"
+            size="small"
+            @change="changePlatform"
+          >
+            <el-option v-for="p in PLATFORMS" :key="p.code" :label="p.label" :value="p.code" />
+          </el-select>
 
           <div
             v-if="degraded.length"
@@ -388,6 +416,19 @@ const hasMessages = computed(() => messages.value.length > 0)
   transition: background 150ms ease, color 150ms ease;
 }
 .topbar-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+/* 平台选择器：静默标注渠道，不抢视觉 */
+.platform-select { width: 118px; margin-left: 6px; }
+.platform-select :deep(.el-select__wrapper) {
+  background: var(--bg-input);
+  border-radius: 8px;
+  box-shadow: none;
+  border: 1px solid var(--border-input);
+}
+.platform-select :deep(.el-select__wrapper.is-focused) {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.12);
+}
 
 /* 降级提示：琥珀色 pill，安静不打扰，hover 才展开说明 */
 .degraded-wrap { position: relative; display: inline-flex; }
