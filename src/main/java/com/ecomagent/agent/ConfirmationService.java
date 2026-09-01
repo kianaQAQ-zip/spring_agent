@@ -1,5 +1,6 @@
 package com.ecomagent.agent;
 
+import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.TenantContext;
 import com.ecomagent.order.OrderActionExecutor;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -45,6 +46,7 @@ public class ConfirmationService {
 
     private final JdbcTemplate jdbcTemplate;
     private final OrderActionExecutor actionExecutor;
+    private final DegradationFlags degradationFlags;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final RowMapper<PendingAction> rowMapper = (rs, i) -> new PendingAction(
@@ -62,9 +64,12 @@ public class ConfirmationService {
             toInstant(rs.getTimestamp("created_at")),
             toInstant(rs.getTimestamp("expires_at")));
 
-    public ConfirmationService(JdbcTemplate jdbcTemplate, OrderActionExecutor actionExecutor) {
+    public ConfirmationService(JdbcTemplate jdbcTemplate,
+                               OrderActionExecutor actionExecutor,
+                               DegradationFlags degradationFlags) {
         this.jdbcTemplate = jdbcTemplate;
         this.actionExecutor = actionExecutor;
+        this.degradationFlags = degradationFlags;
     }
 
     /**
@@ -184,11 +189,15 @@ public class ConfirmationService {
     }
 
     /** §2.4 结果回灌：执行动作（真实落库，见 {@link OrderActionExecutor}）。
-     *  真实执行失败时回退 mock 结果（含 EXECUTED 标记），保证 H2 测试与降级场景不炸。 */
+     *  真实执行失败时回退 mock 结果（含 EXECUTED 标记），保证 H2 测试与降级场景不炸。
+     *  但必须 mark {@code ACTION_EXEC}——否则坐席看到 EXECUTED 以为已退款，实际没改，又是静默失效。 */
     private String execute(String tool, String finalParamsJson, String operator) {
         try {
-            return actionExecutor.execute(tool, finalParamsJson, operator);
+            String result = actionExecutor.execute(tool, finalParamsJson, operator);
+            degradationFlags.clear(DegradationFlags.ACTION_EXEC);
+            return result;
         } catch (Exception e) {
+            degradationFlags.mark(DegradationFlags.ACTION_EXEC);
             log.warn("真实动作执行失败，回退 mock: tool={} err={}", tool, e.getMessage());
             return "{\"status\":\"EXECUTED\",\"tool\":\"" + tool + "\",\"params\":" + finalParamsJson
                     + ",\"operator\":\"" + (operator == null ? "" : operator) + "\"}";

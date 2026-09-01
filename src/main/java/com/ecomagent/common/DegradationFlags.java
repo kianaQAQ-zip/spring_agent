@@ -34,6 +34,8 @@ public class DegradationFlags {
     public static final String EMBEDDING = "embedding";
     /** 会话落库失败 → 历史会话/统计/导出会丢数据（静默失效的高危项） */
     public static final String PERSISTENCE = "persistence";
+    /** 写操作执行失败（退款/改地址/发券）→ 回退 mock 结果，坐席看到的 EXECUTED 是假的 */
+    public static final String ACTION_EXEC = "action-exec";
 
     private static final Duration TTL = Duration.ofMinutes(5);
 

@@ -25,7 +25,8 @@ const DEGRADATION_LABELS = {
   guardrail: '回答事实校验（护栏已关闭）',
   chat: '对话生成',
   embedding: '知识库向量检索',
-  persistence: '会话落库（历史记录可能丢失）'
+  persistence: '会话落库（历史记录可能丢失）',
+  'action-exec': '写操作执行（退款/改地址/发券可能未真正生效）'
 }
 
 // 平台维度（Q2 人工标注）：客服在对话前选定，随会话落库，供按平台统计
