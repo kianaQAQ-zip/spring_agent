@@ -5,6 +5,7 @@ import KbView from '../views/KbView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import HistoryView from '../views/HistoryView.vue'
 import EvalView from '../views/EvalView.vue'
+import HandoffView from '../views/HandoffView.vue'
 
 const routes = [
   { path: '/', redirect: '/chat' },
@@ -13,7 +14,8 @@ const routes = [
   { path: '/kb', name: 'kb', component: KbView },
   { path: '/dashboard', name: 'dashboard', component: DashboardView },
   { path: '/history', name: 'history', component: HistoryView },
-  { path: '/eval', name: 'eval', component: EvalView }
+  { path: '/eval', name: 'eval', component: EvalView },
+  { path: '/handoff', name: 'handoff', component: HandoffView }
 ]
 
 export default createRouter({

@@ -40,6 +40,20 @@ export function conversationDetail(id) { return request(`/conversations/${encode
 // ---- RAG 评估台 ----
 export function evalSummary() { return request('/eval/summary') }
 export function evalTrend(days = 14) { return request(`/eval/trend?days=${days}`) }
+export function evalGaps(days = 30, limit = 20) { return request(`/eval/gaps?days=${days}&limit=${limit}`) }
+export function evalGapSummary(days = 30) { return request(`/eval/gaps/summary?days=${days}`) }
+
+// ---- 转人工工单 ----
+export function listHandoff(status) {
+  const q = status ? `?status=${encodeURIComponent(status)}` : ''
+  return request(`/handoff${q}`)
+}
+export function claimHandoff(id, operator = 'agent') {
+  return request(`/handoff/${encodeURIComponent(id)}/claim?operator=${encodeURIComponent(operator)}`, { method: 'POST' })
+}
+export function closeHandoff(id, operator = 'agent') {
+  return request(`/handoff/${encodeURIComponent(id)}/close?operator=${encodeURIComponent(operator)}`, { method: 'POST' })
+}
 
 // ---- 报表导出 ----
 export function exportConversations(params = {}) {

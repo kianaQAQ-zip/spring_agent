@@ -166,3 +166,24 @@ CREATE TABLE IF NOT EXISTS rag_eval (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_rag_eval_time ON rag_eval (tenant_id, created_at);
+
+-- ------------------------------------------------------------
+-- 11) 转人工工单（M3）：Agent 搞不定时带上下文交接给人工
+--     context 存对话历史快照 JSON，避免会话被清理后工单失去上下文
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS handoff_ticket (
+    id              VARCHAR(64) PRIMARY KEY,
+    conversation_id VARCHAR(64) NOT NULL,
+    tenant_id       VARCHAR(64) NOT NULL DEFAULT 'default',
+    platform        VARCHAR(32) NOT NULL DEFAULT 'unknown',
+    reason          VARCHAR(64) NOT NULL,
+    detail          TEXT,
+    context         TEXT,
+    status          VARCHAR(16) NOT NULL DEFAULT 'open',
+    operator        VARCHAR(64),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    claimed_at      TIMESTAMPTZ,
+    closed_at       TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_handoff_status ON handoff_ticket (tenant_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_handoff_conv   ON handoff_ticket (tenant_id, conversation_id);

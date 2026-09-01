@@ -1,10 +1,12 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { evalSummary, evalTrend } from '../api'
+import { evalSummary, evalTrend, evalGaps, evalGapSummary } from '../api'
 import ChartLine from '../components/ChartLine.vue'
 
 const summary = ref({})
 const trend = ref([])
+const gaps = ref([])
+const gapSummary = ref({})
 const loading = ref(true)
 const error = ref('')
 
@@ -15,9 +17,13 @@ const fmtPct = (v) => {
 
 onMounted(async () => {
   try {
-    const [s, t] = await Promise.all([evalSummary(), evalTrend(14)])
+    const [s, t, g, gs] = await Promise.all([
+      evalSummary(), evalTrend(14), evalGaps(30, 20), evalGapSummary(30)
+    ])
     summary.value = s || {}
     trend.value = (t || []).map((d) => ({ label: (d.day || '').slice(5), value: d.conversations }))
+    gaps.value = g || []
+    gapSummary.value = gs || {}
   } catch (e) {
     error.value = e.message || '加载失败'
   } finally {
@@ -64,6 +70,23 @@ onMounted(async () => {
       <h3>对话量趋势（近 14 天）</h3>
       <ChartLine :data="trend" color="#534ab7" />
     </section>
+
+    <section v-if="!loading" class="panel gap-panel">
+      <div class="gap-head">
+        <h3>知识库缺口（该补哪些文档）</h3>
+        <span class="gap-sub">
+          近 30 天 {{ gapSummary.missed || 0 }} 次未命中 · {{ gapSummary.distinct_missed || 0 }} 种问法
+        </span>
+      </div>
+      <div v-if="gaps.length" class="gap-list">
+        <div v-for="(g, i) in gaps" :key="i" class="gap-row">
+          <span class="gap-rank">{{ i + 1 }}</span>
+          <span class="gap-query">{{ g.query }}</span>
+          <span class="gap-times">{{ g.times }} 次</span>
+        </div>
+      </div>
+      <p v-else class="gap-empty">暂无未命中问题——知识库覆盖良好</p>
+    </section>
   </div>
 </template>
 
@@ -95,6 +118,28 @@ onMounted(async () => {
   border-radius: var(--radius-lg, 12px); padding: 18px 20px;
 }
 .panel h3 { margin: 0 0 14px; font-size: 14px; font-weight: 600; color: var(--text); }
+.gap-panel { margin-top: 18px; }
+.gap-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.gap-head h3 { margin: 0; }
+.gap-sub { font-size: 12px; color: var(--text-tertiary); }
+.gap-list { display: flex; flex-direction: column; }
+.gap-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.gap-row:last-child { border-bottom: none; }
+.gap-rank {
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  background: var(--brand-soft); color: var(--brand);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600;
+}
+.gap-query { flex: 1; font-size: 14px; color: var(--text); }
+.gap-times {
+  padding: 2px 8px; border-radius: 999px; font-size: 11px; flex-shrink: 0;
+  background: var(--bg-danger, #fdeceb); color: var(--danger);
+}
+.gap-empty { margin: 0; text-align: center; color: var(--text-tertiary); font-size: 13px; padding: 20px 0; }
 
 @media (max-width: 900px) {
   .cards { grid-template-columns: repeat(2, 1fr); }

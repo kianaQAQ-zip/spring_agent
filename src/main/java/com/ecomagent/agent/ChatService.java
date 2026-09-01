@@ -6,6 +6,8 @@ import com.ecomagent.common.TenantContext;
 import com.ecomagent.conversation.ConversationPersistenceService;
 import com.ecomagent.eval.CostCalculator;
 import com.ecomagent.eval.RagEvalService;
+import com.ecomagent.handoff.HandoffService;
+import com.ecomagent.handoff.HandoffTicket;
 import com.ecomagent.rag.Citation;
 import com.ecomagent.rag.CitationValidator;
 import com.ecomagent.rag.RetrievalPipeline;
@@ -58,6 +60,7 @@ public class ChatService {
     private final ConversationPersistenceService conversationPersistence;
     private final RagEvalService ragEvalService;
     private final CostCalculator costCalculator;
+    private final HandoffService handoffService;
     private final ObjectMapper objectMapper;
 
     public ChatService(@Qualifier("qwenChatModel") ChatModel chatModel,
@@ -73,6 +76,7 @@ public class ChatService {
                        ConversationPersistenceService conversationPersistence,
                        RagEvalService ragEvalService,
                        CostCalculator costCalculator,
+                       HandoffService handoffService,
                        OrderQueryTool orderQueryTool,
                        RefundTool refundTool,
                        AddressChangeTool addressChangeTool,
@@ -90,6 +94,7 @@ public class ChatService {
         this.conversationPersistence = conversationPersistence;
         this.ragEvalService = ragEvalService;
         this.costCalculator = costCalculator;
+        this.handoffService = handoffService;
         this.objectMapper = objectMapper;
 
         MessageChatMemoryAdvisor memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
@@ -112,13 +117,7 @@ public class ChatService {
             Signal signal = signalDetector.detect(userMessage);
 
             // 2. L2 状态提取（qwen-turbo 增量，best-effort）
-            SessionState state;
-            try {
-                state = sessionStateService.extractState(conversationId, userMessage);
-            } catch (Exception e) {
-                log.warn("状态提取失败（best-effort 跳过）: {}", e.getMessage());
-                state = SessionState.empty(conversationId, TenantContext.get());
-            }
+            SessionState state = extractStateSafely(conversationId, userMessage);
 
             // 3. 状态机：主动澄清
             Decision decision = stateMachine.decide(state.intent(), state.orderId(), signal);
@@ -173,10 +172,13 @@ public class ChatService {
                     })
                     .doOnComplete(() -> {
                         degradationFlags.clear(DegradationFlags.CHAT);
-                        conversationPersistence.recordAssistantMessage(conversationId, acc.toString());
-                        checkCitations(acc.toString(), rr.citations().size());
-                        runGuardrail(acc.toString(), contextOf(rr));
-                        recordRagEval(conversationId, userMessage, rr, systemPrompt, acc.toString());
+                        String answer = acc.toString();
+                        conversationPersistence.recordAssistantMessage(conversationId, answer);
+                        checkCitations(answer, rr.citations().size());
+                        OutputGuardrailService.GuardrailResult guardrail =
+                                runGuardrail(answer, contextOf(rr));
+                        evaluateHandoff(conversationId, userMessage, state, rr, guardrail);
+                        recordRagEval(conversationId, userMessage, rr, systemPrompt, answer);
                     });
         } catch (Exception e) {
             // 同步阶段异常（如检索失败）→ 以 SSE error 事件返回
@@ -208,6 +210,16 @@ public class ChatService {
         return Flux.just(ServerSentEvent.<String>builder().event("token").data(reason).build());
     }
 
+    /** 状态提取失败时退化为空状态，不阻断对话。抽成方法以便 lambda 捕获（保持 effectively final）。 */
+    private SessionState extractStateSafely(String conversationId, String userMessage) {
+        try {
+            return sessionStateService.extractState(conversationId, userMessage);
+        } catch (Exception e) {
+            log.warn("状态提取失败（best-effort 跳过）: {}", e.getMessage());
+            return SessionState.empty(conversationId, TenantContext.get());
+        }
+    }
+
     /** citations 事件载荷：引用列表 + 当前降级中的能力（供前端显示"基础问答模式"）。 */
     public record CitationsPayload(List<Citation> citations, List<String> degraded) {
     }
@@ -220,15 +232,60 @@ public class ChatService {
         }
     }
 
-    /** §1.1 输出护栏：越界强断言 + 事实一致性（LLM-as-judge），失败仅告警（转人工话术在 M8 事件化）。 */
-    private void runGuardrail(String answer, String context) {
-        if (outputGuardrailService.isOutOfScope(answer)) {
+    /** §1.1 输出护栏：越界强断言 + 事实一致性（LLM-as-judge）。返回判定结果供转人工决策。 */
+    private OutputGuardrailService.GuardrailResult runGuardrail(String answer, String context) {
+        boolean outOfScope = outputGuardrailService.isOutOfScope(answer);
+        if (outOfScope) {
             log.warn("回答疑似越界强断言，建议转人工: {}", answer);
         }
         OutputGuardrailService.GuardrailResult result = outputGuardrailService.judge(answer, context);
         if (result.failed()) {
-            log.warn("事实一致性 FAIL，转人工话术: {}", result.reason());
+            log.warn("事实一致性 FAIL: {}", result.reason());
         }
+        return outOfScope && !result.failed()
+                ? new OutputGuardrailService.GuardrailResult("FAIL", "越界强断言且无引用")
+                : result;
+    }
+
+    /**
+     * 转人工判定（M3）：命中任一条件即建工单，带对话上下文交接给人工。
+     *
+     * <p>条件按优先级：用户明确要求 &gt; 情绪负面 &gt; 事实校验失败 &gt; 检索未命中。
+     * 幂等由 {@code HandoffService} 保证，同一会话同一原因不会重复建单。
+     */
+    private void evaluateHandoff(String conversationId, String userMessage, SessionState state,
+                                 RetrievalResult rr,
+                                 OutputGuardrailService.GuardrailResult guardrail) {
+        try {
+            if (userMessage != null && HANDOFF_PATTERN.matcher(userMessage).find()) {
+                handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.USER_REQUEST,
+                        "用户消息: " + userMessage);
+            } else if (isNegativeEmotion(state.emotion())) {
+                handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.NEGATIVE_EMOTION,
+                        "识别情绪: " + state.emotion());
+            } else if (guardrail != null && guardrail.failed()) {
+                handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.GUARDRAIL_FAIL,
+                        guardrail.reason());
+            } else if (rr.documents().isEmpty()) {
+                handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.NO_HIT,
+                        "未召回任何知识库文档，提问: " + userMessage);
+            }
+        } catch (Exception e) {
+            log.warn("转人工判定失败: {}", e.getMessage());
+        }
+    }
+
+    private static final java.util.regex.Pattern HANDOFF_PATTERN =
+            java.util.regex.Pattern.compile("转人工|人工客服|找人工|人工服务|真人客服");
+
+    private static boolean isNegativeEmotion(String emotion) {
+        if (emotion == null || emotion.isBlank()) {
+            return false;
+        }
+        String e = emotion.toLowerCase();
+        return e.contains("愤怒") || e.contains("生气") || e.contains("投诉")
+                || e.contains("不满") || e.contains("差评") || e.contains("失望")
+                || e.contains("angry") || e.contains("upset");
     }
 
     private String contextOf(RetrievalResult rr) {

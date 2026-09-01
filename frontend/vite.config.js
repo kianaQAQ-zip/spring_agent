@@ -14,7 +14,8 @@ export default defineConfig({
       '/stats': { target: 'http://localhost:8080', changeOrigin: true },
       '/conversations': { target: 'http://localhost:8080', changeOrigin: true },
       '/eval': { target: 'http://localhost:8080', changeOrigin: true },
-      '/export': { target: 'http://localhost:8080', changeOrigin: true }
+      '/export': { target: 'http://localhost:8080', changeOrigin: true },
+      '/handoff': { target: 'http://localhost:8080', changeOrigin: true }
     }
   }
 })

@@ -10,6 +10,7 @@ const themeStore = useThemeStore()
 const navs = [
   { path: '/chat', label: '客户聊天窗', icon: 'ChatDotRound' },
   { path: '/confirm', label: '坐席确认台', icon: 'Tickets' },
+  { path: '/handoff', label: '转人工工单', icon: 'Service' },
   { path: '/kb', label: '知识库上传', icon: 'FolderOpened' },
   { path: '/dashboard', label: '咨询态势看板', icon: 'DataLine' },
   { path: '/history', label: '对话记录', icon: 'List' },
