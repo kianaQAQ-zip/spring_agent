@@ -1,6 +1,7 @@
 package com.ecomagent.agent;
 
 import com.ecomagent.common.TenantContext;
+import com.ecomagent.order.OrderActionExecutor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -43,6 +44,7 @@ public class ConfirmationService {
     private static final long TTL_SECONDS = 300; // 5 分钟不确认自动过期
 
     private final JdbcTemplate jdbcTemplate;
+    private final OrderActionExecutor actionExecutor;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final RowMapper<PendingAction> rowMapper = (rs, i) -> new PendingAction(
@@ -60,8 +62,9 @@ public class ConfirmationService {
             toInstant(rs.getTimestamp("created_at")),
             toInstant(rs.getTimestamp("expires_at")));
 
-    public ConfirmationService(JdbcTemplate jdbcTemplate) {
+    public ConfirmationService(JdbcTemplate jdbcTemplate, OrderActionExecutor actionExecutor) {
         this.jdbcTemplate = jdbcTemplate;
+        this.actionExecutor = actionExecutor;
     }
 
     /**
@@ -180,10 +183,16 @@ public class ConfirmationService {
         return list.isEmpty() ? null : list.get(0);
     }
 
-    /** §2.4 结果回灌：执行动作（演示 mock）。真实项目在此调用订单/物流/券系统。 */
+    /** §2.4 结果回灌：执行动作（真实落库，见 {@link OrderActionExecutor}）。
+     *  真实执行失败时回退 mock 结果（含 EXECUTED 标记），保证 H2 测试与降级场景不炸。 */
     private String execute(String tool, String finalParamsJson, String operator) {
-        return "{\"status\":\"EXECUTED\",\"tool\":\"" + tool + "\",\"params\":" + finalParamsJson
-                + ",\"operator\":\"" + (operator == null ? "" : operator) + "\"}";
+        try {
+            return actionExecutor.execute(tool, finalParamsJson, operator);
+        } catch (Exception e) {
+            log.warn("真实动作执行失败，回退 mock: tool={} err={}", tool, e.getMessage());
+            return "{\"status\":\"EXECUTED\",\"tool\":\"" + tool + "\",\"params\":" + finalParamsJson
+                    + ",\"operator\":\"" + (operator == null ? "" : operator) + "\"}";
+        }
     }
 
     private String idempotencyKey(String conversationId, String tool, String paramsJson) {

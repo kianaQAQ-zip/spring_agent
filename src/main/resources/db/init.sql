@@ -187,3 +187,30 @@ CREATE TABLE IF NOT EXISTS handoff_ticket (
 );
 CREATE INDEX IF NOT EXISTS idx_handoff_status ON handoff_ticket (tenant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_handoff_conv   ON handoff_ticket (tenant_id, conversation_id);
+
+-- ------------------------------------------------------------
+-- 12) 优惠券（M4）：坐席确认后真实发放，替代 mock
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS coupon (
+    id          VARCHAR(64) PRIMARY KEY,
+    tenant_id   VARCHAR(64) NOT NULL DEFAULT 'default',
+    coupon_type VARCHAR(32) NOT NULL,
+    value       NUMERIC(10,2) NOT NULL DEFAULT 0,
+    status      VARCHAR(16) NOT NULL DEFAULT 'issued',
+    issued_by   VARCHAR(64),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_coupon_tenant ON coupon (tenant_id, created_at DESC);
+
+-- ------------------------------------------------------------
+-- 13) 未命中问题语义簇（M4）：embedding 贪心聚类结果，供缺口雷达读
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rag_gap_cluster (
+    id             VARCHAR(64) PRIMARY KEY,
+    tenant_id      VARCHAR(64) NOT NULL DEFAULT 'default',
+    representative TEXT NOT NULL,
+    member_count   INT NOT NULL DEFAULT 1,
+    last_seen      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_gap_cluster_tenant ON rag_gap_cluster (tenant_id, member_count DESC);
