@@ -42,6 +42,17 @@ public class KnowledgeDocRepository {
                         + "FROM knowledge_doc WHERE doc_id = ?", ROW_MAPPER, docId);
     }
 
+    /** 同 source（文件名）的旧 doc_id 列表，供去重——重复上传先删旧文档。 */
+    public java.util.List<String> findDocIdsBySource(String source) {
+        return jdbcTemplate.queryForList(
+                "SELECT doc_id FROM knowledge_doc WHERE source = ?", String.class, source);
+    }
+
+    /** 按 doc_id 删除元信息记录。 */
+    public void deleteByDocId(String docId) {
+        jdbcTemplate.update("DELETE FROM knowledge_doc WHERE doc_id = ?", docId);
+    }
+
     private static KnowledgeDoc mapRow(ResultSet rs, int rn) throws SQLException {
         return new KnowledgeDoc(
                 rs.getString("id"),

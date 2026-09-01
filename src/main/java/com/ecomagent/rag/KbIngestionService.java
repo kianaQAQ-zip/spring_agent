@@ -1,6 +1,8 @@
 package com.ecomagent.rag;
 
 import com.ecomagent.rag.dto.ParseResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -25,6 +27,8 @@ import java.util.UUID;
  */
 @Service
 public class KbIngestionService {
+
+    private static final Logger log = LoggerFactory.getLogger(KbIngestionService.class);
 
     private final DocProcessorClient docProcessorClient;
     private final TikaDocumentLoader tikaDocumentLoader;
@@ -53,6 +57,9 @@ public class KbIngestionService {
     public IngestionResult ingest(MultipartFile file) {
         String docId = UUID.randomUUID().toString();
         String filename = file.getOriginalFilename();
+
+        // 去重：同源文件重复上传会堆积重复向量，先删旧文档再入库（覆盖语义）
+        dedupeBySource(filename);
 
         ParseResult parse = docProcessorClient.parse(file);
         if (!parse.reachable) {
@@ -97,6 +104,31 @@ public class KbIngestionService {
 
         return new IngestionResult(docId, filename, "INGESTED", chunks.size(),
                 parse.cleanScore, parse.flags);
+    }
+
+    /**
+     * 去重（覆盖语义）：同 source（文件名）的旧文档，先删旧向量 + 旧元信息，再入库。
+     *
+     * <p>根因：{@code docId = UUID.randomUUID()} 每次上传都新生成，若无此步，
+     * 重复上传同一文件会在向量库堆积大量内容相同的 chunk（已实测堆了 7 份）。
+     */
+    private void dedupeBySource(String source) {
+        if (source == null || source.isBlank()) {
+            return;
+        }
+        List<String> oldDocIds = knowledgeDocRepository.findDocIdsBySource(source);
+        for (String oldDocId : oldDocIds) {
+            try {
+                vectorStore.delete(new FilterExpressionBuilder().eq("doc_id", oldDocId).build());
+            } catch (Exception e) {
+                // 向量删除失败不阻断上传（可能是向量已不存在），元信息仍删，保证下次不再重复
+                log.warn("去重删除向量失败: docId={} err={}", oldDocId, e.getMessage());
+            }
+            knowledgeDocRepository.deleteByDocId(oldDocId);
+        }
+        if (!oldDocIds.isEmpty()) {
+            log.info("去重删除 {} 份旧文档（source={}）", oldDocIds.size(), source);
+        }
     }
 
     public KnowledgeDoc getDoc(String docId) {
