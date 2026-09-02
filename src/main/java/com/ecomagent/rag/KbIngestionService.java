@@ -102,6 +102,9 @@ public class KbIngestionService {
                 UUID.randomUUID().toString(), docId, DEFAULT_TENANT, filename,
                 chunks.size(), parse.parsedText));
 
+        log.info("知识库入库成功: docId={} source={} chunks={} cleanScore={}",
+                docId, filename, chunks.size(), parse.cleanScore);
+
         return new IngestionResult(docId, filename, "INGESTED", chunks.size(),
                 parse.cleanScore, parse.flags);
     }
