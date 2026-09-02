@@ -1,6 +1,5 @@
 package com.ecomagent.handoff;
 
-import com.ecomagent.common.PlatformContext;
 import com.ecomagent.common.TenantContext;
 import com.ecomagent.conversation.MessageRecord;
 import com.ecomagent.conversation.MessageRepository;
@@ -47,10 +46,15 @@ public class HandoffService {
         this.objectMapper = objectMapper;
     }
 
-    /** 建工单（幂等）。已有同会话同原因的未关闭工单则跳过。 */
-    public boolean createIfNeeded(String conversationId, HandoffTicket.Reason reason, String detail) {
+    /**
+     * 建工单（幂等）。已有同会话同原因的未关闭工单则跳过。
+     *
+     * @param tenantId 显式传入（SSE 回调在 Reactor 线程，ThreadLocal 不可用）
+     * @param platform 同上
+     */
+    public boolean createIfNeeded(String conversationId, HandoffTicket.Reason reason,
+                                  String detail, String tenantId, String platform) {
         try {
-            String tenantId = TenantContext.get();
             Integer dup = jdbcTemplate.queryForObject("""
                             SELECT count(*) FROM handoff_ticket
                             WHERE tenant_id = ? AND conversation_id = ? AND reason = ?
@@ -66,7 +70,7 @@ public class HandoffService {
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                     java.util.UUID.randomUUID().toString(), conversationId, tenantId,
-                    PlatformContext.code(), reason.name(), detail,
+                    platform, reason.name(), detail,
                     snapshotContext(tenantId, conversationId), HandoffTicket.STATUS_OPEN);
             log.info("转人工工单已创建: conversation={} reason={}", conversationId, reason);
             return true;

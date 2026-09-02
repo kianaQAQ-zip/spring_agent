@@ -2,6 +2,7 @@ package com.ecomagent.agent;
 
 import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.GlobalExceptionHandler;
+import com.ecomagent.common.PlatformContext;
 import com.ecomagent.common.TenantContext;
 import com.ecomagent.conversation.ConversationPersistenceService;
 import com.ecomagent.eval.CostCalculator;
@@ -110,8 +111,14 @@ public class ChatService {
      * 流式回答：先发 {@code event: citations}，再逐 token 以 {@code event: token} 推送。
      */
     public Flux<ServerSentEvent<String>> streamAnswer(String conversationId, String userMessage) {
+        // 在此捕获上下文：SSE 的 doOnComplete/doOnError 跑在 Reactor 的 Netty 线程上，
+        // ThreadLocal（TenantContext/PlatformContext）读不到，必须显式透传给落库调用，
+        // 否则 assistant 消息 / rag_eval / 工单的 platform 会全落 unknown。
+        final String tenantId = TenantContext.get();
+        final String platform = PlatformContext.code();
+
         // 0. 用户消息进入即落库——即使后续流式失败，也保留下"用户问了什么"
-        conversationPersistence.recordUserMessage(conversationId, userMessage);
+        conversationPersistence.recordUserMessage(conversationId, userMessage, tenantId, platform);
         try {
             // 1. 信号检测（纯规则，同步）
             Signal signal = signalDetector.detect(userMessage);
@@ -167,18 +174,22 @@ public class ChatService {
                         degradationFlags.mark(DegradationFlags.CHAT);
                         // 失败也落库（截断版），保证历史会话不丢轮
                         conversationPersistence.recordAssistantMessage(conversationId,
-                                acc.isEmpty() ? "[truncated: stream interrupted]" : acc + " [truncated]");
+                                acc.isEmpty() ? "[truncated: stream interrupted]" : acc + " [truncated]",
+                                tenantId, platform);
                         persistTruncated(conversationId, acc.toString());
                     })
                     .doOnComplete(() -> {
                         degradationFlags.clear(DegradationFlags.CHAT);
                         String answer = acc.toString();
-                        conversationPersistence.recordAssistantMessage(conversationId, answer);
+                        conversationPersistence.recordAssistantMessage(
+                                conversationId, answer, tenantId, platform);
                         checkCitations(answer, rr.citations().size());
                         OutputGuardrailService.GuardrailResult guardrail =
                                 runGuardrail(answer, contextOf(rr));
-                        evaluateHandoff(conversationId, userMessage, state, rr, guardrail);
-                        recordRagEval(conversationId, userMessage, rr, systemPrompt, answer);
+                        evaluateHandoff(conversationId, userMessage, state, rr,
+                                guardrail, tenantId, platform);
+                        recordRagEval(conversationId, userMessage, rr, systemPrompt, answer,
+                                tenantId, platform);
                     });
         } catch (Exception e) {
             // 同步阶段异常（如检索失败）→ 以 SSE error 事件返回
@@ -191,7 +202,8 @@ public class ChatService {
      * 旁路调用——采集失败不影响对话。
      */
     private void recordRagEval(String conversationId, String query, RetrievalResult rr,
-                               String systemPrompt, String answer) {
+                               String systemPrompt, String answer,
+                               String tenantId, String platform) {
         try {
             int docCount = rr.documents().size();
             int citationCount = CitationValidator.extractIndices(answer).size();
@@ -199,8 +211,8 @@ public class ChatService {
             int answerTokens = TokenUtils.estimateTokens(answer);
             int promptTokens = TokenUtils.estimateTokens(systemPrompt) + TokenUtils.estimateTokens(query);
             double cost = costCalculator.estimate("glm-5.2", promptTokens, answerTokens);
-            ragEvalService.record(conversationId, query, docCount, citationCount,
-                    outOfRange, answerTokens, cost);
+            ragEvalService.record(conversationId, query, tenantId, platform, docCount,
+                    citationCount, outOfRange, answerTokens, cost);
         } catch (Exception e) {
             log.warn("RAG 评估采集失败: {}", e.getMessage());
         }
@@ -255,20 +267,21 @@ public class ChatService {
      */
     private void evaluateHandoff(String conversationId, String userMessage, SessionState state,
                                  RetrievalResult rr,
-                                 OutputGuardrailService.GuardrailResult guardrail) {
+                                 OutputGuardrailService.GuardrailResult guardrail,
+                                 String tenantId, String platform) {
         try {
             if (userMessage != null && HANDOFF_PATTERN.matcher(userMessage).find()) {
                 handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.USER_REQUEST,
-                        "用户消息: " + userMessage);
+                        "用户消息: " + userMessage, tenantId, platform);
             } else if (isNegativeEmotion(state.emotion())) {
                 handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.NEGATIVE_EMOTION,
-                        "识别情绪: " + state.emotion());
+                        "识别情绪: " + state.emotion(), tenantId, platform);
             } else if (guardrail != null && guardrail.failed()) {
                 handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.GUARDRAIL_FAIL,
-                        guardrail.reason());
+                        guardrail.reason(), tenantId, platform);
             } else if (rr.documents().isEmpty()) {
                 handoffService.createIfNeeded(conversationId, HandoffTicket.Reason.NO_HIT,
-                        "未召回任何知识库文档，提问: " + userMessage);
+                        "未召回任何知识库文档，提问: " + userMessage, tenantId, platform);
             }
         } catch (Exception e) {
             log.warn("转人工判定失败: {}", e.getMessage());

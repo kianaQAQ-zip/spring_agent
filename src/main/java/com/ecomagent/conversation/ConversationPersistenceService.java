@@ -2,8 +2,6 @@ package com.ecomagent.conversation;
 
 import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.PiiMaskUtil;
-import com.ecomagent.common.PlatformContext;
-import com.ecomagent.common.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,11 +37,15 @@ public class ConversationPersistenceService {
         this.degradationFlags = degradationFlags;
     }
 
-    /** 用户消息进入即落库；首次消息同时建会话记录并设标题。 */
-    public void recordUserMessage(String conversationId, String content) {
+    /**
+     * 用户消息进入即落库；首次消息同时建会话记录并设标题。
+     *
+     * @param tenantId 显式传入——SSE 流式的回调跑在 Reactor 线程，ThreadLocal 读不到
+     * @param platform 同上，必须显式传
+     */
+    public void recordUserMessage(String conversationId, String content,
+                                  String tenantId, String platform) {
         try {
-            String tenantId = TenantContext.get();
-            String platform = PlatformContext.code();
             conversationRepository.upsert(conversationId, tenantId, platform, titleOf(content));
             messageRepository.insert(conversationId, tenantId, platform, "user", content, false);
             degradationFlags.clear(DegradationFlags.PERSISTENCE);
@@ -54,11 +56,10 @@ public class ConversationPersistenceService {
         }
     }
 
-    /** 助手消息流结束后落库（content 已脱敏）。 */
-    public void recordAssistantMessage(String conversationId, String content) {
+    /** 助手消息流结束后落库（content 已脱敏）。tenant/platform 显式传入，不依赖 ThreadLocal。 */
+    public void recordAssistantMessage(String conversationId, String content,
+                                       String tenantId, String platform) {
         try {
-            String tenantId = TenantContext.get();
-            String platform = PlatformContext.code();
             conversationRepository.touch(conversationId, tenantId);
             String masked = PiiMaskUtil.mask(content);
             messageRepository.insert(conversationId, tenantId, platform, "assistant",
