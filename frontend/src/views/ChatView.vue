@@ -1,7 +1,7 @@
 <script setup>
-import { ref, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { streamChat, getDocChunk } from '../api'
+import { streamChat, getDocChunk, conversationDetail } from '../api'
 import { useChatStore } from '../stores/chat'
 import { renderMarkdown, exportAsMarkdown, exportAsWord, exportAsExcel, hasTable } from '../utils/markdown'
 
@@ -56,10 +56,65 @@ const SUGGESTED = [
   '优惠券能叠加使用吗？'
 ]
 
-function scrollToBottom() {
+// ---- 智能滚动：用户上滑离开底部时暂停自动滚动，回到底部（或点按钮）恢复 ----
+const autoScroll = ref(true)
+const textareaRef = ref(null)
+const composing = ref(false)      // 中文输入法组词中，Enter 不应发送
+const lastQuestion = ref('')
+
+function onListScroll() {
+  const el = listRef.value
+  if (!el) return
+  autoScroll.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
+function scrollToBottom(force = false) {
+  if (!force && !autoScroll.value) return
   nextTick(() => {
     if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight
   })
+}
+
+function jumpToBottom() {
+  autoScroll.value = true
+  scrollToBottom(true)
+}
+
+// ---- 输入框高度自适应（P0 bug 修复：多行内容显示不全）----
+function autoResize() {
+  const el = textareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  const max = 200
+  el.style.height = Math.min(el.scrollHeight, max) + 'px'
+  el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+}
+
+function focusInput() {
+  nextTick(() => textareaRef.value && textareaRef.value.focus())
+}
+
+// Enter 发送 / Shift+Enter 换行 / 输入法组词中不发送
+function onEnterKey() {
+  if (!composing.value) send()
+}
+
+// ---- 后端错误 → 用户能看懂的提示（含 403 配额超限等场景）----
+function friendlyError(msg) {
+  const m = (msg || '').toLowerCase()
+  if (m.includes('403') || m.includes('配额') || m.includes('quota') || m.includes('频率') || m.includes('limit')) {
+    return '模型调用配额超限：当前套餐额度不足或触发限流。请到阿里云百炼控制台确认额度后重试，也可以切换其他模型继续使用。'
+  }
+  if (m.includes('401') || m.includes('unauthorized') || m.includes('api key')) {
+    return 'API Key 无效或未配置：请检查后端环境变量 DASHSCOPE_API_KEY 是否正确。'
+  }
+  if (m.includes('timeout') || m.includes('超时')) {
+    return '请求超时：模型响应过慢或网络不稳定，请稍后重试。'
+  }
+  if (m.includes('failed to fetch') || m.includes('网络')) {
+    return '无法连接到服务：请确认后端已启动（8080 端口）后重试。'
+  }
+  return msg || '服务暂时不可用，请稍后重试。'
 }
 
 function now() {
@@ -72,11 +127,12 @@ function send(text) {
   const q = (text ?? input.value).trim()
   if (!q || streaming.value) return
   input.value = ''
+  lastQuestion.value = q
   messages.value.push({ id: Date.now(), role: 'user', content: q, time: now() })
-  const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: '', citations: [], streaming: true, time: now() }
+  const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: '', citations: [], streaming: true, time: now(), error: false }
   messages.value.push(assistantMsg)
   streaming.value = true
-  scrollToBottom()
+  scrollToBottom(true)
 
   esRef.value = streamChat(store.conversationId, q, {
     platform: platform.value,
@@ -89,15 +145,50 @@ function send(text) {
     onDegraded: (list) => { degraded.value = list || [] },
     onToken: (token) => { assistantMsg.content += token; scrollToBottom() },
     onError: (msg) => {
-      assistantMsg.content = msg || '服务暂时不可用'
-      ElMessage.error(msg || '服务暂时不可用')
+      assistantMsg.error = true
+      assistantMsg.content = friendlyError(msg)
+      ElMessage.error('请求失败，详情见对话提示')
     },
     onDone: () => {
       assistantMsg.streaming = false
       streaming.value = false
       if (!assistantMsg.content) assistantMsg.content = '（无内容）'
+      focusInput()
     }
   })
+}
+
+// 错误后重试：移除失败的对问答对，重新发送
+function retry() {
+  if (streaming.value || !lastQuestion.value) return
+  // 尾部应是 [user, assistant(error)]
+  const tail = messages.value.slice(-2)
+  if (tail.length === 2 && tail[0].role === 'user' && tail[1].error) {
+    messages.value.splice(-2, 2)
+  }
+  send(lastQuestion.value)
+}
+
+// 历史消息加载：进入页面时若当前会话已有落库记录，回放完整对话
+async function loadHistory() {
+  const cid = store.conversationId
+  if (!cid) return
+  try {
+    const data = await conversationDetail(cid)
+    const msgs = data.messages || []
+    if (msgs.length) {
+      messages.value = msgs.map((m, i) => ({
+        id: Date.now() + i,
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content || '',
+        citations: [],
+        streaming: false,
+        error: false,
+        time: (m.createdAt || '').slice(11, 16) || now()
+      }))
+      scrollToBottom(true)
+    }
+  } catch { /* 新会话本无历史，静默忽略 */ }
 }
 
 function newConversation() {
@@ -107,6 +198,8 @@ function newConversation() {
   allCitations.value = []
   showCitations.value = false
   degraded.value = []
+  autoScroll.value = true
+  focusInput()
 }
 
 function changePlatform(code) {
@@ -198,8 +291,16 @@ function onDocClick(e) {
   if (!e.target.closest('[data-cite]') && !e.target.closest('[data-popover]')) closePopover()
   if (!e.target.closest('[data-export-menu]') && !e.target.closest('[data-export-btn]')) closeExport()
 }
-onMounted(() => document.addEventListener('click', onDocClick))
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+  loadHistory()
+  autoResize()
+  focusInput()
+})
 onUnmounted(() => document.removeEventListener('click', onDocClick))
+
+// 输入内容变化 → 重算高度（P0 bug：多行内容显示不全）
+watch(input, () => nextTick(autoResize))
 
 const hasMessages = computed(() => messages.value.length > 0)
 </script>
@@ -248,7 +349,7 @@ const hasMessages = computed(() => messages.value.length > 0)
         </button>
       </header>
 
-      <div ref="listRef" class="list">
+      <div ref="listRef" class="list" @scroll="onListScroll">
         <!-- 空状态 -->
         <div v-if="!hasMessages && !streaming" class="empty">
           <div class="empty-logo">
@@ -279,7 +380,14 @@ const hasMessages = computed(() => messages.value.length > 0)
             <template v-else>
               <div class="avatar avatar-ai">AI</div>
               <div class="msg-body">
-                <div class="bubble bubble-ai">
+                <div class="bubble bubble-ai" :class="{ 'bubble-error': m.error }">
+                  <div v-if="m.error" class="error-head">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span>请求失败</span>
+                    <button class="retry-btn" @click="retry">重试</button>
+                  </div>
                   <div class="markdown-body" v-html="renderMarkdown(m.content)"></div>
                   <span v-if="m.streaming" class="cursor"></span>
                   <div v-if="citationBadges(m.content, m.citations).length" class="cite-row">
@@ -315,17 +423,29 @@ const hasMessages = computed(() => messages.value.length > 0)
         </div>
       </div>
 
+      <!-- 回到底部：用户上滑离开底部时出现 -->
+      <transition name="fade">
+        <button v-if="!autoScroll && hasMessages" class="jump-btn" title="回到底部" @click="jumpToBottom">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      </transition>
+
       <!-- 输入区 -->
       <div class="input-area">
         <div class="input-inner">
           <div class="textarea-wrap">
             <textarea
+              ref="textareaRef"
               v-model="input"
               class="textarea"
               rows="1"
               placeholder="输入您的问题，Enter 发送，Shift+Enter 换行"
               :disabled="streaming"
-              @keydown.enter.exact.prevent="send()"
+              @keydown.enter.exact.prevent="onEnterKey"
+              @compositionstart="composing = true"
+              @compositionend="composing = false"
             ></textarea>
           </div>
           <button
@@ -402,7 +522,7 @@ const hasMessages = computed(() => messages.value.length > 0)
 .chat { display: flex; height: 100%; }
 
 /* 主区 */
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 20px; flex-shrink: 0;
@@ -550,13 +670,37 @@ const hasMessages = computed(() => messages.value.length > 0)
 .input-inner { max-width: var(--chat-max-w); margin: 0 auto; display: flex; align-items: flex-end; gap: 10px; }
 .textarea-wrap { flex: 1; position: relative; }
 .textarea {
-  width: 100%; min-height: 44px; max-height: 120px;
+  width: 100%; min-height: 44px; max-height: 200px;
   padding: 10px 16px; border: 1px solid var(--border-input); border-radius: 12px;
   font-size: 14px; line-height: 1.5; color: var(--text); background: var(--bg-input);
   resize: none; outline: none; font-family: inherit;
   transition: border-color 200ms ease, box-shadow 200ms ease;
 }
 .textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.12); }
+
+/* 回到底部悬浮按钮 */
+.jump-btn {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: 130px; z-index: 15;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-secondary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-md);
+  transition: all 150ms ease;
+}
+.jump-btn:hover { color: var(--brand); border-color: var(--brand); }
+
+/* 错误气泡：浅红底 + 警告头 + 重试 */
+.bubble-error { background: color-mix(in srgb, #e24b4a 8%, transparent); border: 1px solid color-mix(in srgb, #e24b4a 28%, transparent); }
+.error-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: #e24b4a; font-size: 13px; font-weight: 600; }
+.retry-btn {
+  margin-left: auto; padding: 2px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #e24b4a 40%, transparent);
+  background: transparent; color: #e24b4a; font-size: 12px; cursor: pointer;
+  transition: all 150ms ease;
+}
+.retry-btn:hover { background: #e24b4a; color: #fff; }
 .cite-toggle {
   width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border-input);
   background: var(--bg-card); cursor: pointer; flex-shrink: 0;
@@ -565,11 +709,12 @@ const hasMessages = computed(() => messages.value.length > 0)
 }
 .cite-toggle.active { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 .send-btn {
-  width: 40px; height: 40px; border-radius: 10px; border: none;
+  width: 40px; height: 40px; border-radius: 50%; border: none;
   background: var(--brand); cursor: pointer; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  transition: opacity 200ms ease, background 200ms ease;
+  transition: opacity 200ms ease, background 200ms ease, transform 150ms ease;
 }
+.send-btn:not(.disabled):active { transform: scale(0.92); }
 .send-btn.disabled { opacity: 0.4; cursor: not-allowed; }
 .send-btn:hover:not(.disabled) { background: #0052a3; }
 .spinner { width: 18px; height: 18px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
@@ -640,4 +785,13 @@ const hasMessages = computed(() => messages.value.length > 0)
 .hl-label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
 .hl-content { background: var(--brand-soft); border: 1px solid var(--border); border-radius: 6px; padding: 12px; white-space: pre-wrap; color: var(--text); }
 .full-content { max-height: 60vh; overflow-y: auto; white-space: pre-wrap; font-size: 13px; color: var(--text-secondary); }
+
+/* 响应式：窄屏收紧留白，气泡占满可用宽度 */
+@media (max-width: 640px) {
+  .list { padding: 16px 10px; }
+  .input-area { padding: 10px 10px 12px; }
+  .msg-body { max-width: 94%; }
+  .bubble { padding: 9px 12px; }
+  .jump-btn { bottom: 120px; }
+}
 </style>

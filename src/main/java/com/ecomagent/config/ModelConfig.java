@@ -71,7 +71,13 @@ public class ModelConfig {
         return withFallback(primary, deepSeekKey, deepSeek, flags, DegradationFlags.CHAT);
     }
 
-    /** 轻量模型：供 QueryRewrite / OutputGuardrail 的判定调用（低价、低延迟） */
+    /**
+     * 轻量模型：供 QueryRewrite / OutputGuardrail / 状态提取的判定调用（低温度）。
+     *
+     * <p>2026-09-03 起从 qwen-turbo 改为 glm-5.2：qwen-turbo 走免费额度池，
+     * 额度耗尽后返回 403 AllocationQuota.FreeTierOnly，导致 query-rewrite / state-extract /
+     * guardrail 三个能力全部静默失效。glm-5.2 不受该免费池限制（主对话实测可用）。
+     */
     @Bean
     @Qualifier("qwenTurboChatModel")
     public ChatModel qwenTurboChatModel(@Value("${dashscope.api-key:}") String apiKey,
@@ -88,7 +94,7 @@ public class ModelConfig {
                 .openAiApi(api)
                 .retryTemplate(retryTemplate)
                 .defaultOptions(OpenAiChatOptions.builder()
-                        .model("qwen-turbo")
+                        .model("glm-5.2")
                         .temperature(0.2)
                         .build())
                 .build();
