@@ -2,6 +2,7 @@ package com.ecomagent.agent;
 
 import com.ecomagent.common.DegradationFlags;
 import com.ecomagent.common.GlobalExceptionHandler;
+import com.ecomagent.common.PiiMaskUtil;
 import com.ecomagent.common.PlatformContext;
 import com.ecomagent.common.TenantContext;
 import com.ecomagent.conversation.ConversationPersistenceService;
@@ -116,6 +117,9 @@ public class ChatService {
         // 否则 assistant 消息 / rag_eval / 工单的 platform 会全落 unknown。
         final String tenantId = TenantContext.get();
         final String platform = PlatformContext.code();
+        final long startMs = System.currentTimeMillis();
+
+        log.info("对话开始: conv={} platform={} q={}", conversationId, platform, brief(userMessage));
 
         // 0. 用户消息进入即落库——即使后续流式失败，也保留下"用户问了什么"
         conversationPersistence.recordUserMessage(conversationId, userMessage, tenantId, platform);
@@ -171,6 +175,9 @@ public class ChatService {
 
             return Flux.concat(Flux.just(citationsEvent), textEvents)
                     .doOnError(e -> {
+                        log.error("对话流中断: conv={} q={} 已生成{}字符 耗时{}ms",
+                                conversationId, brief(userMessage), acc.length(),
+                                System.currentTimeMillis() - startMs, e);
                         degradationFlags.mark(DegradationFlags.CHAT);
                         // 失败也落库（截断版），保证历史会话不丢轮
                         conversationPersistence.recordAssistantMessage(conversationId,
@@ -179,6 +186,8 @@ public class ChatService {
                         persistTruncated(conversationId, acc.toString());
                     })
                     .doOnComplete(() -> {
+                        log.info("对话完成: conv={} 回答{}字符 耗时{}ms", conversationId,
+                                acc.length(), System.currentTimeMillis() - startMs);
                         degradationFlags.clear(DegradationFlags.CHAT);
                         String answer = acc.toString();
                         conversationPersistence.recordAssistantMessage(
@@ -192,9 +201,20 @@ public class ChatService {
                                 tenantId, platform);
                     });
         } catch (Exception e) {
-            // 同步阶段异常（如检索失败）→ 以 SSE error 事件返回
+            // 同步阶段异常（检索/LLM 客户端构建等）→ 带完整堆栈记 ERROR，再以 SSE error 事件返回
+            log.error("对话处理异常（同步阶段）: conv={} platform={} q={}",
+                    conversationId, platform, brief(userMessage), e);
             return GlobalExceptionHandler.toSseError(e);
         }
+    }
+
+    /** 日志用短摘要：截断 + PII 脱敏。 */
+    private static String brief(String text) {
+        if (text == null) {
+            return "";
+        }
+        String s = PiiMaskUtil.mask(text.replaceAll("\\s+", " ").trim());
+        return s.length() <= 120 ? s : s.substring(0, 120) + "...(截断)";
     }
 
     /**

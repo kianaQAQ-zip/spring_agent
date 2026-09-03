@@ -32,6 +32,16 @@ deepseek:
 doc-processor:
   url: http://localhost:8000
 
+# 日志：IDEA 控制台可见的三段式格式（时间 级别 [线程] logger - 消息）。
+# API-TRACE 是 LoggingFilter 的命名 logger，业务包 com.ecomagent 默认 INFO。
+logging:
+  level:
+    root: INFO
+    com.ecomagent: INFO
+    API-TRACE: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{28} - %msg%n"
+
 management:
   endpoints:
     web:
