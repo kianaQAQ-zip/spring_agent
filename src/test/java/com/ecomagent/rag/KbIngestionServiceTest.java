@@ -50,7 +50,8 @@ class KbIngestionServiceTest {
     void setUp() {
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS knowledge_doc ("
                 + "id VARCHAR(36) PRIMARY KEY, doc_id VARCHAR(64), tenant_id VARCHAR(64), "
-                + "source VARCHAR(512), chunk_count INT, parsed_text TEXT, created_at TIMESTAMP)");
+                + "source VARCHAR(512), chunk_count INT, parsed_text TEXT, created_at TIMESTAMP, "
+                + "kb_id VARCHAR(64), file_size BIGINT, status VARCHAR(16), clean_score DOUBLE)");
         jdbcTemplate.execute("DELETE FROM knowledge_doc");
         when(docProcessorClient.parse(any())).thenReturn(ParseResult.unreachable());
     }
@@ -95,7 +96,8 @@ class KbIngestionServiceTest {
 
         assertEquals("QUARANTINED", result.status());
         verify(vectorStore, times(0)).add(anyList());
-        // 未入库：knowledge_doc 无记录
-        assertEquals(0, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM knowledge_doc", Integer.class));
+        // 不入向量库，但元信息落库（status=QUARANTINED），供失败列表排查
+        assertEquals(1, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM knowledge_doc WHERE status = 'QUARANTINED'", Integer.class));
     }
 }

@@ -36,6 +36,7 @@ public class KbIngestionService {
     private final VectorStore vectorStore;
     private final KnowledgeDocRepository knowledgeDocRepository;
     private final Bm25Index bm25Index;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     private static final String DEFAULT_TENANT = "default";
     private static final double CLEAN_SCORE_THRESHOLD = 0.5;
@@ -45,13 +46,15 @@ public class KbIngestionService {
                               StructureAwareChunker chunker,
                               VectorStore vectorStore,
                               KnowledgeDocRepository knowledgeDocRepository,
-                              Bm25Index bm25Index) {
+                              Bm25Index bm25Index,
+                              org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.docProcessorClient = docProcessorClient;
         this.tikaDocumentLoader = tikaDocumentLoader;
         this.chunker = chunker;
         this.vectorStore = vectorStore;
         this.knowledgeDocRepository = knowledgeDocRepository;
         this.bm25Index = bm25Index;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public IngestionResult ingest(MultipartFile file) {
@@ -67,15 +70,62 @@ public class KbIngestionService {
             parse = tikaDocumentLoader.parse(file);
         }
 
-        // clean_score 过低 → 隔离复核，不入库（§9.1 质量门禁）
+        // clean_score 过低 → 隔离复核，不入向量库（§9.1 质量门禁）；但元信息落库（状态 QUARANTINED）供失败列表排查
         if (parse.cleanScore < CLEAN_SCORE_THRESHOLD) {
+            knowledgeDocRepository.save(new KnowledgeDoc(
+                    UUID.randomUUID().toString(), docId, DEFAULT_TENANT, filename,
+                    0, parse.parsedText, "default", file.getSize(), KnowledgeDoc.STATUS_QUARANTINED,
+                    parse.cleanScore));
+            log.warn("文档被隔离（cleanScore={}）: docId={} source={}", parse.cleanScore, docId, filename);
             return new IngestionResult(docId, filename, "QUARANTINED", 0,
                     parse.cleanScore, parse.flags);
         }
 
         List<Chunk> chunks = chunker.chunk(docId, filename, parse.blocks);
+        int indexed = indexChunks(chunks, "default");
 
-        // 构建 Documents（PgVectorStore.add 内部用 Tongyi embedding bean 编码）
+        knowledgeDocRepository.save(new KnowledgeDoc(
+                UUID.randomUUID().toString(), docId, DEFAULT_TENANT, filename,
+                chunks.size(), parse.parsedText, "default", file.getSize(),
+                KnowledgeDoc.STATUS_INGESTED, parse.cleanScore));
+
+        log.info("知识库入库成功: docId={} source={} chunks={} cleanScore={}",
+                docId, filename, chunks.size(), parse.cleanScore);
+
+        return new IngestionResult(docId, filename, "INGESTED", chunks.size(),
+                parse.cleanScore, parse.flags);
+    }
+
+    /**
+     * 重新处理：删除该文档旧向量后，基于已解析全文（parsed_text）重新分块 + 向量化。
+     * 用于分块策略调整后无需重新上传原文件的场景。
+     *
+     * @return 新的分块数
+     */
+    public int reprocess(String docId) {
+        KnowledgeDoc doc = knowledgeDocRepository.findByDocId(docId);
+        if (doc == null) {
+            throw new IllegalArgumentException("文档不存在: " + docId);
+        }
+        String text = doc.parsedText() == null ? "" : doc.parsedText();
+        if (text.isBlank()) {
+            throw new IllegalStateException("文档缺少解析全文，无法重新处理（请删除后重新上传原文件）: " + docId);
+        }
+        // 1. 删旧向量
+        vectorStore.delete(new FilterExpressionBuilder().eq("doc_id", docId).build());
+        // 2. 用解析全文构造单 block，重走柔性分块
+        List<com.ecomagent.rag.dto.ParseBlock> blocks = List.of(
+                new com.ecomagent.rag.dto.ParseBlock("text", text, 1, 0, text.length() / 2));
+        List<Chunk> chunks = chunker.chunk(docId, doc.source(), blocks);
+        int indexed = indexChunks(chunks, doc.kbId() == null ? "default" : doc.kbId());
+        // 3. 更新元信息
+        jdbcTemplateUpdateChunkCount(docId, chunks.size());
+        log.info("文档重新处理完成: docId={} 新chunks={}", docId, chunks.size());
+        return chunks.size();
+    }
+
+    /** 构建 Documents → 向量入库 → 同步 BM25 索引。返回入库 chunk 数。 */
+    private int indexChunks(List<Chunk> chunks, String kbId) {
         List<Document> documents = new ArrayList<>(chunks.size());
         for (Chunk c : chunks) {
             Map<String, Object> metadata = Map.of(
@@ -87,7 +137,8 @@ public class KbIngestionService {
                     "block_type", c.blockType(),
                     "atomic", c.atomic(),
                     "token_count", c.tokenCount(),
-                    "heading_path", c.headingPath());
+                    "heading_path", c.headingPath(),
+                    "kb_id", kbId == null ? "default" : kbId);
             documents.add(new Document(c.content(), metadata));
         }
         if (!documents.isEmpty()) {
@@ -97,16 +148,13 @@ public class KbIngestionService {
                 bm25Index.index(d);
             }
         }
+        return documents.size();
+    }
 
-        knowledgeDocRepository.save(new KnowledgeDoc(
-                UUID.randomUUID().toString(), docId, DEFAULT_TENANT, filename,
-                chunks.size(), parse.parsedText));
-
-        log.info("知识库入库成功: docId={} source={} chunks={} cleanScore={}",
-                docId, filename, chunks.size(), parse.cleanScore);
-
-        return new IngestionResult(docId, filename, "INGESTED", chunks.size(),
-                parse.cleanScore, parse.flags);
+    private void jdbcTemplateUpdateChunkCount(String docId, int chunkCount) {
+        jdbcTemplate.update(
+                "UPDATE knowledge_doc SET chunk_count = ?, status = ? WHERE doc_id = ?",
+                chunkCount, KnowledgeDoc.STATUS_INGESTED, docId);
     }
 
     /**

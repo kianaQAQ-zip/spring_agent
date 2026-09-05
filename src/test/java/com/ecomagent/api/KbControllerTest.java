@@ -3,6 +3,7 @@ package com.ecomagent.api;
 import com.ecomagent.rag.DocChunk;
 import com.ecomagent.rag.IngestionResult;
 import com.ecomagent.rag.KbIngestionService;
+import com.ecomagent.rag.KbManageService;
 import com.ecomagent.rag.KnowledgeDoc;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,8 @@ class KbControllerTest {
 
     @MockBean
     private KbIngestionService ingestionService;
+    @MockBean
+    private KbManageService manageService;
     @Autowired
     private MockMvc mockMvc;
 
@@ -48,7 +51,7 @@ class KbControllerTest {
 
     @Test
     void getDocReturnsEnvelope() throws Exception {
-        KnowledgeDoc doc = new KnowledgeDoc("id-1", "doc-1", "default", "policy.txt", 3, "全文");
+        KnowledgeDoc doc = new KnowledgeDoc("id-1", "doc-1", "default", "policy.txt", 3, "全文", "default", 128L, "INGESTED", 0.95);
         when(ingestionService.getDoc(eq("doc-1"))).thenReturn(doc);
 
         mockMvc.perform(get("/kb/doc/doc-1"))

@@ -214,3 +214,28 @@ CREATE TABLE IF NOT EXISTS rag_gap_cluster (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_gap_cluster_tenant ON rag_gap_cluster (tenant_id, member_count DESC);
+
+-- ------------------------------------------------------------
+-- 14) 知识库管理（M5 运营）：多知识库 + 文档管理字段
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id              VARCHAR(64) PRIMARY KEY,
+    kb_id           VARCHAR(64) NOT NULL,
+    tenant_id       VARCHAR(64) NOT NULL DEFAULT 'default',
+    name            VARCHAR(128) NOT NULL,
+    description     VARCHAR(512),
+    embedding_model VARCHAR(64) NOT NULL DEFAULT 'text-embedding-v3',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_kb UNIQUE (tenant_id, kb_id)
+);
+-- 内置默认知识库（幂等种子）
+INSERT INTO knowledge_base (id, kb_id, name, description)
+SELECT 'kb-default-seed', 'default', '默认知识库', '系统内置知识库（上传未指定知识库时归入此处）'
+WHERE NOT EXISTS (SELECT 1 FROM knowledge_base WHERE tenant_id = 'default' AND kb_id = 'default');
+
+ALTER TABLE knowledge_doc ADD COLUMN IF NOT EXISTS kb_id     VARCHAR(64) NOT NULL DEFAULT 'default';
+ALTER TABLE knowledge_doc ADD COLUMN IF NOT EXISTS file_size BIGINT;
+ALTER TABLE knowledge_doc ADD COLUMN IF NOT EXISTS status    VARCHAR(16) NOT NULL DEFAULT 'INGESTED';
+ALTER TABLE knowledge_doc ADD COLUMN IF NOT EXISTS clean_score NUMERIC(6,4);
+CREATE INDEX IF NOT EXISTS idx_kdoc_kb     ON knowledge_doc (tenant_id, kb_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kdoc_status ON knowledge_doc (tenant_id, status);

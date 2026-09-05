@@ -26,9 +26,11 @@ public class KnowledgeDocRepository {
         // created_at 由 DEFAULT now() 自动填充：PG JDBC 42.7.7 的 setObject() 无法推断 Instant 的 SQL 类型，
         // 显式传参会报 "Can't infer the SQL type to use for an instance of java.time.Instant"。
         jdbcTemplate.update(
-                "INSERT INTO knowledge_doc (id, doc_id, tenant_id, source, chunk_count, parsed_text) "
-                        + "VALUES (?, ?, ?, ?, ?, ?)",
-                d.id(), d.docId(), d.tenantId(), d.source(), d.chunkCount(), d.parsedText());
+                "INSERT INTO knowledge_doc (id, doc_id, tenant_id, source, chunk_count, parsed_text, "
+                        + "kb_id, file_size, status, clean_score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                d.id(), d.docId(), d.tenantId(), d.source(), d.chunkCount(), d.parsedText(),
+                d.kbId() == null ? "default" : d.kbId(), d.fileSize(),
+                d.status() == null ? KnowledgeDoc.STATUS_INGESTED : d.status(), d.cleanScore());
     }
 
     public KnowledgeDoc findByDocId(String docId) {
@@ -38,7 +40,7 @@ public class KnowledgeDocRepository {
             return null;
         }
         return jdbcTemplate.queryForObject(
-                "SELECT id, doc_id, tenant_id, source, chunk_count, parsed_text "
+                "SELECT id, doc_id, tenant_id, source, chunk_count, parsed_text, kb_id, file_size, status, clean_score "
                         + "FROM knowledge_doc WHERE doc_id = ?", ROW_MAPPER, docId);
     }
 
@@ -60,6 +62,10 @@ public class KnowledgeDocRepository {
                 rs.getString("tenant_id"),
                 rs.getString("source"),
                 rs.getInt("chunk_count"),
-                rs.getString("parsed_text"));
+                rs.getString("parsed_text"),
+                rs.getString("kb_id"),
+                rs.getObject("file_size") == null ? null : rs.getLong("file_size"),
+                rs.getString("status"),
+                rs.getObject("clean_score") == null ? null : rs.getDouble("clean_score"));
     }
 }

@@ -99,6 +99,39 @@ export function getDocChunk(docId, chunkIndex) {
   return request(`/kb/doc/${docId}?chunk=${chunkIndex}`)
 }
 
+// ---- 知识库管理（M5 运营） ----
+export function listKbDocuments(params = {}) {
+  const q = new URLSearchParams()
+  if (params.kbId) q.set('kbId', params.kbId)
+  if (params.status) q.set('status', params.status)
+  if (params.keyword) q.set('keyword', params.keyword)
+  q.set('sort', params.sort || 'createdAt')
+  q.set('order', params.order || 'desc')
+  q.set('page', params.page || 1)
+  q.set('size', params.size || 20)
+  return request(`/kb/documents?${q.toString()}`)
+}
+export function getKbDocument(docId) {
+  return request(`/kb/documents/${encodeURIComponent(docId)}`)
+}
+export function deleteKbDocument(docId) {
+  return request(`/kb/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' })
+}
+export function reprocessKbDocument(docId) {
+  return request(`/kb/documents/${encodeURIComponent(docId)}/reprocess`, { method: 'POST' })
+}
+export function listKbs() { return request('/kb/list') }
+export function createKb(name, description) {
+  return request('/kb/create', { method: 'POST', body: JSON.stringify({ name, description }) })
+}
+export function deleteKb(kbId) {
+  return request(`/kb/${encodeURIComponent(kbId)}`, { method: 'DELETE' })
+}
+export function kbStats() { return request('/kb/stats') }
+export function kbRetrievalTest(body) {
+  return request('/kb/retrieval-test', { method: 'POST', body: JSON.stringify(body) })
+}
+
 // ---- 客户聊天 SSE ----
 // 后端契约：先 event: citations（{citations, degraded}），再 event: token，失败时 event: error
 // degraded 非空 = 部分能力已静默失效（状态提取/查询改写/护栏），前端需如实告知用户
