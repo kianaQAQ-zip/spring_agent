@@ -42,8 +42,6 @@ const PLATFORMS = [
 ]
 const platform = ref(localStorage.getItem('ecom.platform') || 'unknown')
 
-// 引用 popover
-const popover = ref(null)         // { citation, x, y }
 // 导出菜单
 const exportMenu = ref(null)      // { id, content, x, y }
 // 源文档阅读器抽屉（highlight=被引用段落，full=原文全文，highlightedFull=高亮后的原文 HTML）
@@ -231,27 +229,7 @@ function citationBadges(content, citations) {
   return badges
 }
 
-function showSource(citation, e) {
-  // popover 定位
-  const rect = e && e.currentTarget ? e.currentTarget.getBoundingClientRect() : null
-  if (rect) {
-    let x = rect.left
-    let y = rect.bottom + 8
-    if (x + 360 > window.innerWidth) x = window.innerWidth - 370
-    if (x < 10) x = 10
-    if (y + 220 > window.innerHeight) y = rect.top - 230
-    popover.value = { citation, x, y }
-  } else {
-    popover.value = null
-  }
-}
-
-function closePopover() {
-  popover.value = null
-}
-
 function viewFullText(citation) {
-  closePopover()
   const c = citation
   const fallback = () => {
     sourceDrawer.value = {
@@ -321,7 +299,7 @@ function doExport(format) {
   exportMenu.value = null
 }
 
-// 点击外部关闭 popover/导出菜单；正文引用标号 data-ref 点击 → 打开源文档阅读器
+// 点击外部关闭导出菜单；正文引用标号 data-ref 点击 → 打开源文档阅读器
 function onDocClick(e) {
   const refEl = e.target.closest('[data-ref]')
   if (refEl) {
@@ -329,7 +307,6 @@ function onDocClick(e) {
     const c = allCitations.value.find((x) => x.index === idx)
     if (c) { viewFullText(c); return }
   }
-  if (!e.target.closest('[data-cite]') && !e.target.closest('[data-popover]')) closePopover()
   if (!e.target.closest('[data-export-menu]') && !e.target.closest('[data-export-btn]')) closeExport()
 }
 onMounted(() => {
@@ -438,7 +415,7 @@ const hasMessages = computed(() => messages.value.length > 0)
                       :key="c.index"
                       class="cite-badge"
                       data-cite
-                      @click="showSource(c, $event)"
+                      @click="viewFullText(c)"
                     >{{ c.index }}</button>
                   </div>
                   <button class="export-btn" data-export-btn @click="openExport($event, m)" title="导出回答">
@@ -528,14 +505,6 @@ const hasMessages = computed(() => messages.value.length > 0)
         </div>
       </div>
     </aside>
-  </div>
-
-  <!-- 引用 popover -->
-  <div v-if="popover" class="popover-overlay"></div>
-  <div v-if="popover" class="popover" data-popover :style="{ top: popover.y + 'px', left: popover.x + 'px' }">
-    <div class="popover-doc">[{{ popover.citation.index }}] {{ popover.citation.source || '知识库来源' }}</div>
-    <div class="popover-snippet">{{ popover.citation.chunkContent || '（无内容）' }}</div>
-    <button class="popover-full" @click="viewFullText(popover.citation)">查看原文全文 →</button>
   </div>
 
   <!-- 导出菜单 -->
@@ -812,18 +781,6 @@ const hasMessages = computed(() => messages.value.length > 0)
 }
 .cite-card-snippet { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 
-/* popover */
-.popover-overlay { position: fixed; inset: 0; z-index: 1000; }
-.popover {
-  position: fixed; z-index: 1001; background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 10px; box-shadow: var(--shadow-lg); padding: 14px;
-  max-width: 360px; min-width: 260px;
-  animation: pop 150ms ease;
-}
-@keyframes pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-.popover-doc { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
-.popover-snippet { font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-height: 140px; overflow-y: auto; }
-.popover-full { margin-top: 10px; border: none; background: none; color: var(--brand); font-size: 13px; cursor: pointer; padding: 0; }
 
 /* 导出菜单 */
 .export-menu {
