@@ -46,8 +46,8 @@ const platform = ref(localStorage.getItem('ecom.platform') || 'unknown')
 const popover = ref(null)         // { citation, x, y }
 // 导出菜单
 const exportMenu = ref(null)      // { id, content, x, y }
-// 源抽屉（原文全文）
-const sourceDrawer = ref({ visible: false, title: '', highlight: '', full: '' })
+// 源文档阅读器抽屉（highlight=被引用段落，full=原文全文，highlightedFull=高亮后的原文 HTML）
+const sourceDrawer = ref({ visible: false, title: '', highlight: '', full: '', highlightedFull: '' })
 
 const SUGGESTED = [
   '七天无理由退货怎么算？',
@@ -206,6 +206,14 @@ function changePlatform(code) {
   platform.value = code
   localStorage.setItem('ecom.platform', code)
 }
+// 渲染 AI 回答：markdown → HTML，并把正文引用标号 [n] 替换为可点击上标（data-ref）
+function renderWithRefs(content) {
+  let html = renderMarkdown(content || '')
+  // [n] → 可点击上标；点击经全局事件代理（onDocClick）跳到对应源文档
+  html = html.replace(/\[(\d+)\]/g, '<sup class="ref-inline" data-ref="$1">[$1]</sup>')
+  return html
+}
+
 // 从内容里提取引用徽章（去重、保序）
 function citationBadges(content, citations) {
   const map = new Map()
@@ -250,20 +258,47 @@ function viewFullText(citation) {
       visible: true,
       title: `${c.source || '知识库来源'}${c.page ? ` · 第 ${c.page} 页` : ''}`,
       highlight: c.chunkContent || '',
-      full: ''
+      full: '',
+      highlightedFull: ''
     }
   }
   if (c.chunkIndex == null || !c.docId) { fallback(); return }
   getDocChunk(c.docId, c.chunkIndex)
     .then((data) => {
+      const full = data.parsedText || ''
+      const chunk = data.chunkContent || c.chunkContent || ''
       sourceDrawer.value = {
         visible: true,
         title: `${data.source || c.source}${c.page ? ` · 第 ${c.page} 页` : ''}`,
-        highlight: data.chunkContent || c.chunkContent || '',
-        full: data.parsedText || ''
+        highlight: chunk,
+        full,
+        highlightedFull: highlightInFull(full, chunk)
       }
+      // 阅读器打开后，滚动定位到被引用段落
+      nextTick(() => {
+        const el = document.querySelector('.full-content .hl-chunk')
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      })
     })
     .catch(fallback)
+}
+
+// 在原文全文里高亮命中段落：转义 HTML 后用 <mark> 包裹首个匹配片段
+function highlightInFull(full, chunk) {
+  if (!full || !chunk) return escapeHtml(full)
+  const key = chunk.trim().slice(0, 60)
+  if (!key) return escapeHtml(full)
+  const idx = full.indexOf(key)
+  if (idx < 0) return escapeHtml(full)
+  const before = escapeHtml(full.slice(0, idx))
+  const mid = escapeHtml(full.slice(idx, idx + key.length))
+  const after = escapeHtml(full.slice(idx + key.length))
+  return before + '<mark class="hl-chunk">' + mid + '</mark>' + after
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 // 导出菜单
@@ -286,8 +321,14 @@ function doExport(format) {
   exportMenu.value = null
 }
 
-// 点击外部关闭 popover/导出菜单
+// 点击外部关闭 popover/导出菜单；正文引用标号 data-ref 点击 → 打开源文档阅读器
 function onDocClick(e) {
+  const refEl = e.target.closest('[data-ref]')
+  if (refEl) {
+    const idx = parseInt(refEl.dataset.ref, 10)
+    const c = allCitations.value.find((x) => x.index === idx)
+    if (c) { viewFullText(c); return }
+  }
   if (!e.target.closest('[data-cite]') && !e.target.closest('[data-popover]')) closePopover()
   if (!e.target.closest('[data-export-menu]') && !e.target.closest('[data-export-btn]')) closeExport()
 }
@@ -388,7 +429,7 @@ const hasMessages = computed(() => messages.value.length > 0)
                     <span>请求失败</span>
                     <button class="retry-btn" @click="retry">重试</button>
                   </div>
-                  <div class="markdown-body" v-html="renderMarkdown(m.content)"></div>
+                  <div class="markdown-body" v-html="renderWithRefs(m.content)"></div>
                   <span v-if="m.streaming" class="cursor"></span>
                   <div v-if="citationBadges(m.content, m.citations).length" class="cite-row">
                     <span class="cite-label">参考来源：</span>
@@ -504,17 +545,19 @@ const hasMessages = computed(() => messages.value.length > 0)
     <button v-if="hasTable(exportMenu.content)" @click="doExport('excel')">导出 Excel</button>
   </div>
 
-  <!-- 源抽屉 -->
-  <el-drawer v-model="sourceDrawer.visible" :title="sourceDrawer.title" size="46%">
-    <div v-if="sourceDrawer.highlight" class="highlight">
-      <div class="hl-label">命中片段</div>
-      <div class="hl-content">{{ sourceDrawer.highlight }}</div>
+  <!-- 源文档阅读器抽屉 -->
+  <el-drawer v-model="sourceDrawer.visible" :title="sourceDrawer.title" size="52%">
+    <div class="reader">
+      <div v-if="sourceDrawer.highlight" class="highlight">
+        <div class="hl-label">被引用段落</div>
+        <div class="hl-content">{{ sourceDrawer.highlight }}</div>
+      </div>
+      <div v-if="sourceDrawer.full" class="full">
+        <div class="hl-label">文档原文（高亮处为引用位置）</div>
+        <div class="full-content" v-html="sourceDrawer.highlightedFull || sourceDrawer.full"></div>
+      </div>
+      <el-empty v-if="!sourceDrawer.highlight && !sourceDrawer.full" description="无可用原文" :image-size="60" />
     </div>
-    <div v-if="sourceDrawer.full" class="full">
-      <div class="hl-label">原文全文</div>
-      <div class="full-content">{{ sourceDrawer.full }}</div>
-    </div>
-    <el-empty v-if="!sourceDrawer.highlight && !sourceDrawer.full" description="无可用原文" :image-size="60" />
   </el-drawer>
 </template>
 
@@ -654,6 +697,23 @@ const hasMessages = computed(() => messages.value.length > 0)
 }
 .cite-badge:hover { transform: scale(1.1); box-shadow: 0 2px 8px rgba(0, 102, 204, 0.4); }
 
+/* 正文引用标号（v-html 注入，scoped 下需 :deep 才能命中） */
+:deep(.ref-inline) {
+  display: inline-block;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--brand-soft); color: var(--brand);
+  font-size: 11px; font-weight: 600; line-height: 16px; text-align: center;
+  cursor: pointer; margin: 0 1px;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+:deep(.ref-inline:hover) { background: var(--brand); color: #fff; transform: translateY(-1px); }
+
+/* 文档阅读器命中段落高亮 */
+:deep(.hl-chunk) {
+  background: #ffe58f; color: #5c4400; padding: 1px 3px; border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(255, 214, 102, 0.5);
+}
+
 /* 导出按钮（hover 显示） */
 .export-btn {
   position: absolute; top: 4px; right: 4px;
@@ -781,10 +841,11 @@ const hasMessages = computed(() => messages.value.length > 0)
 .export-menu button:hover { background: var(--bg-hover); }
 
 /* 源抽屉 */
-.highlight { margin-bottom: 16px; }
-.hl-label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
+.reader { display: flex; flex-direction: column; gap: 16px; }
+.highlight { margin-bottom: 4px; }
+.hl-label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; font-weight: 600; }
 .hl-content { background: var(--brand-soft); border: 1px solid var(--border); border-radius: 6px; padding: 12px; white-space: pre-wrap; color: var(--text); }
-.full-content { max-height: 60vh; overflow-y: auto; white-space: pre-wrap; font-size: 13px; color: var(--text-secondary); }
+.full-content { max-height: 60vh; overflow-y: auto; white-space: pre-wrap; font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
 
 /* 响应式：窄屏收紧留白，气泡占满可用宽度 */
 @media (max-width: 640px) {
